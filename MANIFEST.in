@@ -1,0 +1,2 @@
+include gurobipy.pyx
+include gurobipy.pxd
