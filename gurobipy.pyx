@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # distutils: libraries = ['gurobi60']
-# distutils: language = c++
+# distutils: language = c
 # Copyright 2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -8,47 +8,34 @@
 # published by the Free Software Foundation
 
 from __future__ import division, print_function
+from numbers import Number
 cimport grb
-from libcpp.string cimport string
+cimport numpy as np
+import numpy as np
 
-from collections import Iterable
-from cython.operator cimport dereference as deref
-import numbers
+cdef grb.GRBenv *masterEnv = NULL
+_error = grb.GRBloadenv(&masterEnv, NULL)
+if _error:
+    raise ImportError('Loading Gurobi environment failed: error code {}'.format(_error))
 
-cdef grb.GRBEnv *env = new grb.GRBEnv()
 
 def read(fname):
     """Read model from file; *fname* may be bytes or unicode type."""
-    cdef string cpp_fname
-    cdef grb.GRBModel *model
-    if type(fname) is bytes:
-        cpp_fname = fname
-    else:
-        assert type(fname) is unicode
-        cpp_fname = fname.encode('utf8')
-    model = new grb.GRBModel(deref(env), cpp_fname)
-    ret = Model(create=False)
-    ret.model = model
-    return ret
+    raise NotImplementedError()
 
 cpdef quicksum(iterable):
     """Create LinExpr consisting of the parts of *iterable*. Elements in the iterator must be either
     Var or LinExpr objects."""
-    cdef LinExpr result
-    cdef object part, it
-    it = iter(iterable)
-    try:
-        result = LinExpr(next(it))
-    except StopIteration:
-        # empty iterable
-        return LinExpr()
-    for part in it:
-        if type(part) is Var:
-            result.expr += grb.GRBLinExpr((<Var>part).var)
-        elif type(part) is LinExpr:
-            result.expr += (<LinExpr>part).expr
+    cdef LinExpr result = LinExpr()
+    for element in iterable:
+        if isinstance(element, Var):
+            result._vars.append(element)
+            result._coeffs.append(1)
+        elif isinstance(element, LinExpr):
+            result += <LinExpr>element
         else:
-            raise ValueError()
+            assert isinstance(element, Number)
+            result._constant += <double>element
     return result
 
 
@@ -61,6 +48,59 @@ cdef class Callbackcls:
         self.MIPNODE = grb.GRB_CB_MIPNODE
         self.MIPNODE_OBJBST = grb.GRB_CB_MIP_OBJBST
 
+
+cdef class AttrConstClass:
+
+    cdef:
+        readonly char* ModelSense
+        readonly char* NumConstrs
+        readonly char* NumVars
+        readonly char* Status
+
+        readonly char* IterCount
+        readonly char* Obj
+        readonly char* ObjCon
+        readonly char* ObjVal
+        readonly char* X
+
+        readonly char *ConstrName
+
+    def __init__(self):
+        self.ModelSense = IntAttrs[b'modelsense'] = grb.GRB_INT_ATTR_MODELSENSE
+        self.NumConstrs = IntAttrs[b'numconstrs'] = grb.GRB_INT_ATTR_NUMCONSTRS
+        self.NumVars = IntAttrs[b'numvars'] = grb.GRB_INT_ATTR_NUMVARS
+        self.Status = IntAttrs[b'status'] = grb.GRB_INT_ATTR_STATUS
+
+        self.IterCount = DblAttrs[b'itercount'] = grb.GRB_DBL_ATTR_ITERCOUNT
+        self.Obj = DblAttrs[b'obj'] = grb.GRB_DBL_ATTR_OBJ
+        self.ObjCon = DblAttrs[b'objcon'] = grb.GRB_DBL_ATTR_OBJCON
+        self.ObjVal = DblAttrs[b'objval'] = grb.GRB_DBL_ATTR_OBJVAL
+        self.X = DblAttrs[b'x'] = grb.GRB_DBL_ATTR_X
+
+        self.ConstrName = StrAttrs[b'constrname'] = grb.GRB_STR_ATTR_CONSTRNAME
+
+
+cdef class ParamConstClass:
+
+    cdef:
+        readonly char* Threads
+        readonly char* OutputFlag
+
+    def __init__(self):
+        self.Threads = IntParams[b'threads'] = grb.GRB_INT_PAR_THREADS
+        self.OutputFlag = IntParams[b'outputflag'] = grb.GRB_INT_PAR_OUTPUTFLAG
+
+
+cdef dict IntAttrs = {}
+cdef dict DblAttrs = {}
+cdef dict StrAttrs = {}
+cdef dict IntParams = {}
+cdef dict DblParams = {}
+
+cdef AttrConstClass cAttr = AttrConstClass()
+cdef ParamConstClass cParam = ParamConstClass()
+
+
 cdef class GRBcls:
     """Dummy class emulating gurobipy.GRB"""
 
@@ -71,7 +111,7 @@ cdef class GRBcls:
         readonly int MAXIMIZE, MINIMIZE, INFEASIBLE, OPTIMAL, INTERRUPTED, \
             INF_OR_UNBD, UNBOUNDED
         readonly char LESS_EQUAL, EQUAL, GREATER_EQUAL
-        readonly object Callback, callback
+        readonly object Callback, callback, Param, param, Attr, attr
     # workaround: INFINITY class member clashes with gcc macro INFINITY
     property INFINITY:
         def __get__(self):
@@ -89,8 +129,9 @@ cdef class GRBcls:
         self.GREATER_EQUAL = grb.GRB_GREATER_EQUAL
         self.MAXIMIZE = grb.GRB_MAXIMIZE
         self.MINIMIZE = grb.GRB_MINIMIZE
-        self.Callback = Callbackcls()
-        self.callback = self.Callback
+        self.callback = self.Callback = Callbackcls()
+        self.Param = self.param = cParam
+        self.Attr = self.attr = cAttr
 
 
 GRB = GRBcls()
@@ -106,61 +147,30 @@ class Gurobicls:
 
 gurobi = Gurobicls()
 
-cdef dict callbackFns = {}
-cdef int callbackNr = 0
+cdef class VarOrConstr:
 
-cdef int runCallback(nr, where) except +:
-    model, fn = callbackFns[nr]
-    fn(model, where)
+    def __cinit__(self, Model model, int index):
+        self.model = model
+        self.index = index
 
-cdef cppclass OMGCallback(grb.GRBCallback):
-    int nr
+    def __getattr__(self, key):
+        if self.index < 0:
+            return 'Constraint not yet added to the model'
+        return self.model._getElementAttr(key, self.index)
 
-    __init__(int nr):
-        this.nr = nr
+    def __str__(self):
+        ret = '<gurobimh.{} '.format(type(self).__name__)
+        if self.index == -1:
+            return ret + '*Awaiting Model Update*>'
+        elif self.index == -2:
+            return ret + ' (Removed)>'
+        elif self.index == -3:
+            return ret +' *removed*>'
+        else:
+            return ret + ' {}>'.format(self.VarName if isinstance(self, Var) else self.ConstrName)
 
-    void callback():
-        runCallback(nr, where)
 
-    double getDbl(int what):
-        return getDoubleInfo(what)
-
-cdef class Var:
-
-    property obj:
-        def __get__(self):
-            return self.var.get(grb.GRB_DoubleAttr_Obj)
-
-        def __set__(self, double obj):
-            self.var.set(grb.GRB_DoubleAttr_Obj, obj)
-
-    property lb:
-        def __get__(self):
-            return self.var.get(grb.GRB_DoubleAttr_LB)
-
-        def __set__(self, double lb):
-            self.var.set(grb.GRB_DoubleAttr_LB, lb)
-    
-    property ub:
-        def __get__(self):
-            return self.var.get(grb.GRB_DoubleAttr_UB)
-
-        def __set__(self, double ub):
-            self.var.set(grb.GRB_DoubleAttr_UB, ub)
-
-    property X:
-        def __get__(self):
-            return self.var.get(grb.GRB_DoubleAttr_X)
-
-    property VarName:
-        def __get__(self):
-            return self.var.get(grb.GRB_StringAttr_VarName)
-
-    property Start:
-        def __get__(self):
-            return self.var.get(grb.GRB_DoubleAttr_Start)
-        def __set__(self, double val):
-            self.var.set(grb.GRB_DoubleAttr_Start, val)
+cdef class Var(VarOrConstr):
 
     def __add__(self, other):
         return LinExpr(self) + other
@@ -168,203 +178,256 @@ cdef class Var:
     def __mul__(self, other):
         return LinExpr(self, other)
 
-    def __str__(self):
-        return 'Var(name={})'.format(self.VarName)
+
+cdef class Constr(VarOrConstr):
+    pass
 
 
-cdef class Constr:
 
-    property slack:
-        def __get__(self):
-            return self.constr.get(grb.GRB_DoubleAttr_Slack)
-
-    property ConstrName:
-        def __get__(self):
-            return self.constr.get(grb.GRB_StringAttr_ConstrName)
+cdef char* _chars(s):
+    if isinstance(s, unicode):
+        # encode to the specific encoding used inside of the module
+        s = (<unicode>s).encode('utf8')
+    return s
 
 
 cdef class Model:
 
-    def __cinit__(self, string name='', create=True):
-        if create:
-            self.model = new grb.GRBModel(deref(env))
-            self.model.set(grb.GRB_StringAttr_ModelName, name)
+    def __init__(self, name=''):
+        cdef int error
+        cdef char* cName = _chars(name)
+        error = grb.GRBnewmodel(masterEnv, &self.model, cName, 0, NULL, NULL, NULL, NULL, NULL)
+        if error:
+            raise RuntimeError('Error creating model: {}'.format(error))
         self.attrs = {}
-        self._cbNr = -1
-        self._cb = NULL
+        self._vars = []
+        self._constrs = []
+        self._varsAddedSinceUpdate = []
+        self._varsRemovedSinceAdded = []
+        self._constrsAddedSinceUpdate = []
+        self._constrsRemovedSinceUpdate = []
 
-    def setParam(self, str param, value):
-        if param == 'OutputFlag':
-            self.model.getEnv().set(grb.GRB_IntParam_OutputFlag, <int>value)
-        elif param == 'Threads':
-            self.model.getEnv().set(grb.GRB_IntParam_Threads, <int>value)
-        elif param == 'Method':
-            self.model.getEnv().set(grb.GRB_IntParam_Method, <int>value)
-        elif param == 'OptimalityTol':
-            self.model.getEnv().set(grb.GRB_DoubleParam_OptimalityTol, <double>value)
-        elif param == 'PrePasses':
-            self.model.getEnv().set(grb.GRB_IntParam_PrePasses, <int>value)
-        elif param == 'Presolve':
-            self.model.getEnv().set(grb.GRB_IntParam_Presolve, <int>value)
-        elif param == 'MIPFocus':
-            self.model.getEnv().set(grb.GRB_IntParam_MIPFocus, <int>value)
+    def setParam(self, param, value):
+        cdef int error
+        if isinstance(param, unicode):
+            param = (<unicode>param).encode('utf8')
+        if param.lower() in DblParams:
+            error = grb.GRBsetdblparam(grb.GRBgetenv(self.model), param, <double>value)
+        elif param.lower() in IntParams:
+            error = grb.GRBsetintparam(grb.GRBgetenv(self.model), param, <int>value)
         else:
-            raise ValueError('Unsupported param: {}'.format(param))
+            raise NotImplementedError()
+        if error:
+            raise RuntimeError('Error setting parameter: {}'.format(error))
+
 
     def __setattr__(self, key, value):
         self.attrs[key] = value
 
     def __getattr__(self, key):
+        cdef int error, intValue
+        cdef double dblValue
+        if isinstance(key, unicode):
+            key = key.encode('utf8')
+        if key.lower() in IntAttrs:
+            error = grb.GRBgetintattr(self.model, key.lower(), &intValue)
+            if error:
+                raise RuntimeError('Error retrieving int attr: {}'.format(error))
+            return intValue
+        elif key.lower() in DblAttrs:
+            error = grb.GRBgetdblattr(self.model, key.lower(), &dblValue)
+            if error:
+                raise RuntimeError('Error retrieving dbl attr: {}'.format(error))
+            return dblValue
         return self.attrs[key]
 
+
+    cdef _getElementAttr(self, key, int element):
+        cdef int error, intValue
+        cdef double dblValue
+        cdef char *strValue
+        if isinstance(key, unicode):
+            key = key.encode('utf8')
+        if key.lower() in StrAttrs:
+            error = grb.GRBgetstrattrelement(self.model, key.lower(), element, &strValue)
+            if error:
+                raise RuntimeError('Error retrieving str attr: {}'.format(error))
+            return str(strValue)
+        elif key.lower() in DblAttrs:
+            error = grb.GRBgetdblattrelement(self.model, key.lower(), element, &dblValue)
+            if error:
+                raise RuntimeError('Error retrieving dbl attr: {}'.format(error))
+            return dblValue
+        else:
+            raise RuntimeError("Unknown attribute '{}'".format(key))
+
+
     cpdef addVar(self, double lb=0, double ub=grb.GRB_INFINITY, double obj=0.0,
-               char vtype=GRB.CONTINUOUS, string name=''):
-        cdef grb.GRBVar var = self.model.addVar(lb, ub, obj, vtype, name)
-        ans = Var()
-        ans.var = var
-        return ans
+               char vtype=GRB.CONTINUOUS, name=''):
+        cdef int error, vind
+        cdef Var var
+        if isinstance(name, unicode):
+            name = name.encode('utf8')
+        error = grb.GRBaddvar(self.model, 0, NULL, NULL, obj, lb, ub, vtype, name)
+        if error:
+            raise RuntimeError('Error creating variable: {}'.format(error))
+        var = Var(self, -1)
+        self._varsAddedSinceUpdate.append(var)
+        return var
 
-    cpdef addConstr(self, lhs, char sense, rhs, string name=''):
-        if type(lhs) is not LinExpr:
-            lhs = LinExpr(lhs)
-        if type(rhs) is not LinExpr:
-            rhs = LinExpr(rhs)
-        self.model.addConstr((<LinExpr>lhs).expr, sense, (<LinExpr>rhs).expr, name)
+    cpdef addConstr(self, lhs, char sense, rhs, name=''):
+        cdef np.ndarray[ndim=1, dtype=int] vInd
+        cdef LinExpr _lhs = lhs if isinstance(lhs, LinExpr) else LinExpr(lhs)
+        cdef np.ndarray[ndim=1, dtype=double] coeffs
+        cdef int i
+        cdef char* cName = _chars(name)
+        cdef Constr constr
+        _lhs = _lhs - (rhs if isinstance(rhs, LinExpr) else LinExpr(rhs))
+        coeffs = np.array(_lhs._coeffs, dtype=np.double)
+        vInd = np.empty(coeffs.size, dtype=np.intc)
+        for i in range(vInd.size):
+            vInd[i] = (<Var>(_lhs._vars[i])).index
+            if vInd[i] < 0:
+                raise RuntimeError('Variable not in model')
+        grb.GRBaddconstr(self.model, vInd.size, <int*>vInd.data, <double*>coeffs.data, sense,
+                         -_lhs._constant, cName)
+        constr = Constr(self, -1)
+        self._constrsAddedSinceUpdate.append(constr)
+        return constr
 
-    cpdef setObjective(self, LinExpr expression, sense=None):
-        cdef int cSense = 0
+    cpdef setObjective(self, expression, sense=None):
+        cdef LinExpr expr = expression if isinstance(expression, LinExpr) else LinExpr(expression)
+        cdef int i, error
+        cdef Var var
         if sense is not None:
-            cSense = <int>sense
-        self.model.setObjective(expression.expr, cSense)
+            error = grb.GRBsetintattr(self.model, grb.GRB_INT_ATTR_MODELSENSE, <int>sense)
+            if error:
+                raise RuntimeError('Error setting objective sense: {}'.format(error))
+        for i in range(len(expr._coeffs)):
+            var = <Var>expr._vars[i]
+            if var.index < 0:
+                raise RuntimeError('Variable not in model')
+            error = grb.GRBsetdblattrelement(self.model, grb.GRB_DBL_ATTR_OBJ, var.index,
+                                             <double>expr._coeffs[i])
+            if error:
+                raise RuntimeError('Error setting objective coefficient: {}'.format(error))
+        if expr._constant != 0:
+            error = grb.GRBsetdblattr(self.model, grb.GRB_DBL_ATTR_OBJCON, expr._constant)
+            if error:
+                raise RuntimeError('Error setting objective constant: {}'.format(error))
 
     cpdef getVars(self):
-        cdef grb.GRBVar *vars = self.model.getVars()
-        cdef int num = self.numVars
-        lst = []
-        for i in range(num):
-            v = Var()
-            v.var = vars[i]
-            lst.append(v)
-        del vars
-        return lst
+        return self._vars[:]
 
     cpdef getConstrs(self):
-        cdef grb.GRBConstr *constrs = self.model.getConstrs()
-        cdef int num = self.numConstrs
-        lst = []
-        for i in range(num):
-            c = Constr()
-            c.constr = constrs[i]
-            lst.append(c)
-        del constrs
-        return lst
+        return self._constrs[:]
 
     cpdef remove(self, Constr constr):
-        self.model.remove(constr.constr)
+        raise NotImplementedError()
 
     cpdef update(self):
-        self.model.update()
+        cdef int error, numVars = self.NumVars, numConstrs = self.NumConstrs, i
+        cdef Var var
+        cdef Constr constr
+        error = grb.GRBupdatemodel(self.model)
+        if error:
+            raise RuntimeError('Error updating the model: {}'.format(error))
+        for i in range(len(self._varsAddedSinceUpdate)):
+            var = self._varsAddedSinceUpdate[i]
+            var.index = numVars + i
+            self._vars.append(var)
+        self._varsAddedSinceUpdate = []
+        for i in range(len(self._constrsAddedSinceUpdate)):
+            constr = self._constrsAddedSinceUpdate[i]
+            constr.index = numConstrs + i
+            self._constrs.append(constr)
+        self._constrsAddedSinceUpdate = []
 
     cpdef optimize(self, callback=None):
-        cdef OMGCallback* cb
-        if callback is not None:
-            if self._cb != NULL:
-                cb = <OMGCallback*>self._cb
-                del cb
-                del callbackFns[self._cbNr]
-            global callbackNr
-            nr = callbackNr
-            callbackNr += 1
-            cb = new OMGCallback(nr)
-            self.model.setCallback(cb)
-            self._cbNr = nr
-            self._cb = cb
-            callbackFns[nr] = (self, callback)
-        self.model.optimize()
+        cdef int error
+        if callback:
+            raise NotImplementedError()
+        self.update()
+        error = grb.GRBoptimize(self.model)
+        if error:
+            raise RuntimeError('Error optimizing model: {}'.format(error))
 
     cpdef terminate(self):
-        self.model.terminate()
+        grb.GRBterminate(self.model)
 
-    def cbGet(self, int what):
-        #print('getget')
-        if what == grb.GRB_CB_MIP_OBJBST:
-            return (<OMGCallback*>(self._cb)).getDbl(what)
 
-    cpdef write(self, string filename):
-        self.model.write(filename)
-
-    property numConstrs:
-        def __get__(self):
-            return self.model.get(grb.GRB_IntAttr_NumConstrs)
-
-    property Status:
-        def __get__(self):
-            return self.model.get(grb.GRB_IntAttr_Status)
-
-    property ObjVal:
-        def __get__(self):
-            return self.model.get(grb.GRB_DoubleAttr_ObjVal)
-
-    property numVars:
-        def __get__(self):
-            return self.model.get(grb.GRB_IntAttr_NumVars)
-
-    property IterCount:
-        def __get__(self):
-            return self.model.get(grb.GRB_DoubleAttr_IterCount)
-
-    property NodeCount:
-        def __get__(self):
-            return self.model.get(grb.GRB_DoubleAttr_NodeCount)
+    cpdef write(self, filename):
+        cdef int error
+        if isinstance(filename, unicode):
+            filename = filename.encode('utf8')
+        error = grb.GRBwrite(self.model, filename)
+        if error:
+            raise RuntimeError('Error writing model: {}'.format(error))
 
     def __dealloc__(self):
-        cdef OMGCallback *cb
-        if self._cb != NULL:
-            cb = <OMGCallback*>(self._cb)
-            del cb
-            del callbackFns[self._cbNr]
-        del self.model
+        grb.GRBfreemodel(self.model)
 
 
 cdef class LinExpr:
-    def __cinit__(self, arg1=0.0, arg2=None, create=True):
-        if not create:
-            return
-        if isinstance(arg2, Var):
-            arg1, arg2 = arg2, arg1
-        if isinstance(arg1, Var):
-            if arg2 is None:
-                self.expr = grb.GRBLinExpr((<Var>arg1).var)
+    def __init__(self, arg1=0.0, arg2=None):
+        self._vars = []
+        self._coeffs = []
+        self._constant = 0
+        if arg2 is None:
+            if isinstance(arg1, Var):
+                self._vars.append(arg1)
+                self._coeffs.append(1.0)
+            elif isinstance(arg1, Number):
+                self._constant = float(arg1)
+            elif isinstance(arg1, LinExpr):
+                self._vars = (<LinExpr>arg1)._vars[:]
+                self._coeffs = (<LinExpr>arg1)._coeffs[:]
+                self._constant = (<LinExpr>arg1)._constant
             else:
-                assert isinstance(arg2, numbers.Real)
-                self.expr = grb.GRBLinExpr((<Var>arg1).var, <double>arg2)
-        elif isinstance(arg1, numbers.Real):
-            assert arg2 is None
-            self.expr = grb.GRBLinExpr(<double>arg1)
-        elif isinstance(arg1, LinExpr):
-            self.expr = (<LinExpr>arg1).expr
+                arg1, arg2 = zip(*arg1)
         else:
-            for i in range(len(arg1)):
-                self.expr += grb.GRBLinExpr((<Var>arg2[i]).var, arg1[i])
+            if isinstance(arg1, Var):
+                self._vars.append(arg1)
+                self._coeffs.append(float(arg2))
+            else:
+                for coeff, var in zip(arg1, arg2):
+                    self._vars.append(<Var>var)
+                    self._coeffs.append(float(coeff))
 
     def __add__(LinExpr self, other):
+        cdef LinExpr _other, result
+        cdef int i
         if not isinstance(other, LinExpr):
-            other = LinExpr(other)
-        cdef LinExpr ret = LinExpr(create=False)
-        ret.expr = self.expr + (<LinExpr>other).expr
-        return ret
+            _other = LinExpr(other)
+        else:
+            _other = <LinExpr>other
+        result = LinExpr()
+        result._vars = self._vars + _other._vars
+        result._coeffs = self._coeffs + _other._coeffs
+        result._constant = self._constant + _other._constant
+        return result
 
     def __sub__(LinExpr self, other):
+        cdef LinExpr _other, result
+        cdef int i
         if not isinstance(other, LinExpr):
-            other = LinExpr(other)
-        cdef LinExpr ret = LinExpr(create=False)
-        ret.expr = self.expr - (<LinExpr>other).expr
-        return ret
+            _other = LinExpr(other)
+        else:
+            _other = <LinExpr>other
+        result = LinExpr()
+        result._vars = self._vars + _other._vars
+        result._coeffs = self._coeffs + [-c for c in _other._coeffs]
+        result._constant = self._constant - _other._constant
+        return result
 
-    def __str__(LinExpr self):
-        parts = []
-        size = self.expr.size()
-        for i in range(size):
-            parts.append('{}*{}'.format(self.expr.getCoeff(i), self.expr.getVar(i).get(
-                grb.GRB_StringAttr_VarName)))
-        return ' + '.join(parts)
+    def __iadd__(LinExpr self, other):
+        cdef LinExpr _other
+        cdef int i
+        if not isinstance(other, LinExpr):
+            _other = LinExpr(other)
+        else:
+            _other = <LinExpr>other
+        self._vars += _other._vars
+        self._coeffs += _other._coeffs
+        self._constant += other._constant
+        return self
