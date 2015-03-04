@@ -29,12 +29,23 @@ else:
 extensions[0].include_dirs = [join(GHOME, 'include')]
 extensions[0].library_dirs = [join(GHOME, 'lib')]
 extensions[0].libraries = ['gurobi60']
+
 setup(
     name='gurobimh',
-    version='0.2',
+    version='0.3',
+    classifiers=[
+      'Development Status :: 3 - Alpha',
+      'Intended Audience :: Science/Research',
+      'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
+      'Operating System :: OS Independent',
+      'Programming Language :: Python :: 2.7',
+      'Programming Language :: Python :: 3',
+      'Topic :: Scientific/Engineering :: Mathematics',
+    ],
     author='Michael Helmling',
     author_email='helmling@uni-koblenz.de',
     license='GPL3',
+    install_requires=['numpy'],
     ext_modules=extensions,
     include_package_data=True,
 )
