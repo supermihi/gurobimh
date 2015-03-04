@@ -359,8 +359,8 @@ cdef class Model:
         for i in sorted(self._constrsRemovedSinceUpdate, reverse=True):
             voc = <Constr>self._constrs[i]
             voc.index = -3
-            del self._vars[i]
-            for voc in self._vars[i:]:
+            del self._constrs[i]
+            for voc in self._constrs[i:]:
                 assert voc.index > 0
                 voc.index -= 1
             numConstrs -= 1
