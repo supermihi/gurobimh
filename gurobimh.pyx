@@ -334,11 +334,18 @@ cdef class Model:
         return self._constrs[:]
 
     cpdef remove(self, VarOrConstr what):
+        cdef int error
         if what.index >= 0:
             if isinstance(what, Constr):
                 self._constrsRemovedSinceUpdate.append(what.index)
+                error = GRBdelconstrs(self.model, 1, &what.index)
+                if error:
+                    raise GurobiError('Error removing constraint: {}'.format(error))
             else:
                 self._varsRemovedSinceUpdate.append(what.index)
+                error = GRBdelvars(self.model, 1, &what.index)
+                if error:
+                    raise GurobiError('Error removing variable: {}'.format(error))
             what.index = -2
 
     cpdef update(self):
