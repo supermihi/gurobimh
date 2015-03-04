@@ -30,7 +30,21 @@ if _error:
 
 def read(fname):
     """Read model from file; *fname* may be bytes or unicode type."""
-    raise NotImplementedError()
+    cdef int error
+    cdef GRBmodel *cModel
+    cdef Model model
+    error = GRBreadmodel(masterEnv, _chars(fname), &cModel)
+    if error:
+        raise GurobiError('Unable to read model from file: {}'.format(error))
+    model = Model(_create=False)
+    model.model = cModel
+    for i in range(model.NumVars):
+        model._vars.append(Var(model, i))
+    for i in range(model.NumConstrs):
+        model._constrs.append(Constr(model, i))
+    return model
+
+
 
 cpdef quicksum(iterable):
     """Create LinExpr consisting of the parts of *iterable*. Elements in the iterator must be either
@@ -63,6 +77,8 @@ cdef class AttrConstClass:
         readonly char* Status
 
         readonly char* IterCount
+        readonly char* LB
+        readonly char* UB
         readonly char* NodeCount
         readonly char* Obj
         readonly char* ObjCon
@@ -80,6 +96,8 @@ cdef class AttrConstClass:
         self.Status = IntAttrs[b'status'] = GRB_INT_ATTR_STATUS
 
         self.IterCount = DblAttrs[b'itercount'] = GRB_DBL_ATTR_ITERCOUNT
+        self.LB = DblAttrs[b'lb'] = GRB_DBL_ATTR_LB
+        self.UB = DblAttrs[b'ub'] = GRB_DBL_ATTR_UB
         self.NodeCount = DblAttrs[b'nodecount'] = GRB_DBL_ATTR_NODECOUNT
         self.Obj = DblAttrs[b'obj'] = GRB_DBL_ATTR_OBJ
         self.ObjCon = DblAttrs[b'objcon'] = GRB_DBL_ATTR_OBJCON
@@ -94,6 +112,7 @@ cdef class AttrConstClass:
 cdef class ParamConstClass:
     """Singleton class for parameter name constants"""
     cdef:
+        readonly char* Method
         readonly char* MIPFocus
         readonly char* Threads
         readonly char* OutputFlag
@@ -101,11 +120,13 @@ cdef class ParamConstClass:
         readonly char* Presolve
 
     def __init__(self):
+        self.Method = IntParams[b'method'] = GRB_INT_PAR_METHOD
+        self.MIPFocus = IntParams[b'mipfocus'] = GRB_INT_PAR_MIPFOCUS
         self.Threads = IntParams[b'threads'] = GRB_INT_PAR_THREADS
         self.OutputFlag = IntParams[b'outputflag'] = GRB_INT_PAR_OUTPUTFLAG
         self.PrePasses = IntParams[b'prepasses'] = GRB_INT_PAR_PREPASSES
         self.Presolve = IntParams[b'presolve'] = GRB_INT_PAR_PRESOLVE
-        self.MIPFocus = IntParams[b'mipfocus'] = GRB_INT_PAR_MIPFOCUS
+
 
 
 cdef dict IntAttrs = {}
@@ -239,11 +260,8 @@ cdef int callbackFunction(GRBmodel *model, void *cbdata, int where, void *userda
 
 cdef class Model:
 
-    def __init__(self, name=''):
-        cdef char* cName = _chars(name)
-        self.error = GRBnewmodel(masterEnv, &self.model, cName, 0, NULL, NULL, NULL, NULL, NULL)
-        if self.error:
-            raise GurobiError('Error creating model: {}'.format(self.error))
+    def __init__(self, name='', _create=True):
+
         self.attrs = {}
         self._vars = []
         self._constrs = []
@@ -254,6 +272,11 @@ cdef class Model:
         self.varInds = np.empty(25, dtype=np.intc)
         self.needUpdate = False
         self.callbackFn = None
+        if _create:
+            self.error = GRBnewmodel(masterEnv, &self.model, _chars(name),
+                                     0, NULL, NULL, NULL, NULL, NULL)
+            if self.error:
+                raise GurobiError('Error creating model: {}'.format(self.error))
 
     def setParam(self, param, value):
         if isinstance(param, unicode):
@@ -333,16 +356,12 @@ cdef class Model:
         return var
 
     cpdef addConstr(self, lhs, char sense, rhs, name=''):
-        cdef LinExpr expr #= LinExpr(lhs) - rhs
+        cdef LinExpr expr = LinExpr(lhs)
         cdef int i
         cdef char* cName = _chars(name)
         cdef Constr constr
         cdef Var var
         cdef np.ndarray[dtype=int, ndim=1] varInds = self.varInds
-        if isinstance(lhs, LinExpr):
-            expr = lhs
-        else:
-            expr = LinExpr(lhs)
         LinExpr.subtractInplace(expr, rhs)
         if varInds.size < len(expr.coeffs):
             self.varInds = np.empty(len(expr.coeffs), dtype=np.intc)
@@ -387,10 +406,12 @@ cdef class Model:
         return self._constrs[:]
 
     cpdef remove(self, VarOrConstr what):
+        if what.model is not self:
+            raise GurobiError('Item to be removed not in model')
         if what.index >= 0:
             if isinstance(what, Constr):
                 self.error = GRBdelconstrs(self.model, 1, &what.index)
-                if self.error:
+                if self.error != 0:
                     raise GurobiError('Error removing constraint: {}'.format(self.error))
                 self._constrsRemovedSinceUpdate.append(what.index)
             else:
@@ -576,3 +597,6 @@ cdef class LinExpr:
     def __iadd__(LinExpr self, other):
         LinExpr.addInplace(self, other)
         return self
+
+    def __repr__(self):
+        return ' + '.join('{}*{}'.format(c, v) for c, v in zip(self.coeffs, self.vars)) + ' + {}'.format(self.constant)

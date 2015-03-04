@@ -107,6 +107,7 @@ cdef extern from 'gurobi_c.h':
     int GRBloadenv(GRBenv **envP, const char *logfilename)
     int GRBnewmodel (GRBenv *, GRBmodel **modelP, const char *Pname, int numvars, double *obj,
                      double *lb, double *ub, char *vtype, const char **varnames )
+    int GRBreadmodel(GRBenv*, const char* filename, GRBmodel **modelP)
     int GRBresetmodel (GRBmodel *)
     int GRBfreemodel (GRBmodel *)
     int GRBaddvar (GRBmodel *, int numnz, int *vind, double *vval, double obj, double lb,
