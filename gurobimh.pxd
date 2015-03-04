@@ -1,3 +1,6 @@
+cimport numpy as np
+from cpython cimport array
+
 cpdef quicksum(iterable)
 
 
@@ -15,13 +18,18 @@ cdef class Constr(VarOrConstr):
 
 
 cdef class LinExpr:
-    cdef list _vars
-    cdef list _coeffs
-    cdef double _constant
+    cdef list vars
+    cdef array.array coeffs
+    cdef double constant
+    cdef LinExpr _copy(self)
+    @staticmethod
+    cdef void addInplace(LinExpr first, other)
+    cdef void subtractInplace(LinExpr first, other)
 
 
 cdef class Model:
     cdef GRBmodel *model
+    cdef int error
     cdef dict attrs
     cdef list _vars
     cdef list _constrs
@@ -29,7 +37,13 @@ cdef class Model:
     cdef list _varsRemovedSinceUpdate
     cdef list _constrsAddedSinceUpdate
     cdef list _constrsRemovedSinceUpdate
-    cdef _getElementAttr(self, key, int element)
+    cdef bint needUpdate
+    cdef object callbackFn
+    cdef void *cbData
+    cdef int cbWhere
+    cdef getElementAttr(self, char* key, int element)
+    cdef int setElementAttr(self, char* key, int element, value) except -1
+    cdef np.ndarray varInds
     cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?)
     cpdef addConstr(self, lhs, char sense, rhs, name=?)
     cpdef setObjective(self, expression, sense=*)
@@ -39,6 +53,7 @@ cdef class Model:
     cpdef remove(self, VarOrConstr what)
     cpdef update(self)
     cpdef optimize(self, callback=?)
+    cpdef cbGet(self, int what)
     cpdef write(self, filename)
 
 
@@ -56,6 +71,7 @@ cdef extern from 'gurobi_c.h':
     const char *GRB_INT_ATTR_STATUS
 
     const char *GRB_DBL_ATTR_ITERCOUNT
+    const char *GRB_DBL_ATTR_NODECOUNT
     const char *GRB_DBL_ATTR_SLACK
     const char *GRB_DBL_ATTR_LB
     const char *GRB_DBL_ATTR_UB
@@ -63,20 +79,29 @@ cdef extern from 'gurobi_c.h':
     const char *GRB_DBL_ATTR_X
     const char *GRB_DBL_ATTR_OBJVAL
     const char *GRB_DBL_ATTR_OBJCON
+    const char *GRB_DBL_ATTR_START
+
 
     const char *GRB_STR_ATTR_CONSTRNAME
     const char *GRB_STR_ATTR_VARNAME
 
     const char *GRB_INT_PAR_METHOD
+    const char *GRB_INT_PAR_MIPFOCUS
     const char *GRB_INT_PAR_THREADS
     const char *GRB_INT_PAR_OUTPUTFLAG
+    const char *GRB_INT_PAR_PREPASSES
+    const char *GRB_INT_PAR_PRESOLVE
 
     const int GRB_MAXIMIZE, GRB_MINIMIZE, GRB_INFEASIBLE, GRB_OPTIMAL, GRB_INTERRUPTED, \
         GRB_INF_OR_UNBD, GRB_UNBOUNDED
     const double GRB_INFINITY
     const int GRB_CB_POLLING, GRB_CB_PRESOLVE, GRB_CB_SIMPLEX, GRB_CB_MIP, GRB_CB_MIPSOL, \
         GRB_CB_MIPNODE, GRB_CB_MESSAGE, GRB_CB_BARRIER
-    const int GRB_CB_MIP_OBJBST
+    # callback codes
+    const int GRB_CB_MIPNODE_OBJBST
+
+    const int GRB_ERROR_CALLBACK
+
     void GRBversion (int *majorP, int *minorP, int *technicalP)
     GRBenv* GRBgetenv(GRBmodel *)
     int GRBloadenv(GRBenv **envP, const char *logfilename)
@@ -93,8 +118,8 @@ cdef extern from 'gurobi_c.h':
     int GRBsetdblattrelement (GRBmodel *, const char *attrname, int element, double newvalue)
     int GRBgetdblattrelement (GRBmodel *, const char *attrname, int element, double *valueP)
     int GRBgetintattrelement (GRBmodel *, const char *attrname, int element, int *valueP)
-    int GRBgetintattrelement (GRBmodel *, const char *attrname, int element, int *valueP)
     int GRBgetstrattrelement (GRBmodel *, const char *attrname, int element, char **valueP)
+    int GRBsetstrattrelement (GRBmodel *, const char *attrname, int element, char *value)
     int GRBsetdblattrarray (GRBmodel *, const char *attrname, int start, int len, double *values)
     int GRBgetdblattrarray (GRBmodel *, const char *attrname, int start, int len, double *values)
     int GRBsetintparam (GRBenv *, const char *paramname, int newvalue)
@@ -104,5 +129,8 @@ cdef extern from 'gurobi_c.h':
     int GRBdelconstrs (GRBmodel *, int numdel, int *ind)
     int GRBdelvars (GRBmodel *, int numdel, int *ind)
     int GRBoptimize (GRBmodel *)
+    int GRBsetcallbackfunc (GRBmodel *, int	(*cb)(GRBmodel *model, void *cbdata, int where, void *usrdata),
+  	  	void *usrdata)
+    int GRBcbget(void *cbdata, int where, int what, void *resultP)
     void GRBterminate (GRBmodel *)
     int GRBwrite(GRBmodel *, const char *filename)

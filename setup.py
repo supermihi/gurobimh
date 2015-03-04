@@ -19,13 +19,15 @@ try:
 except KeyError:
     raise RuntimeError('GUROBI_HOME not set')
 
-if '--cython' in sys.argv:
-    from Cython.Build import cythonize
-    extensions = cythonize(['gurobimh.pyx'])
-    sys.argv.remove('--cython')
-else:
-    from distutils.extension import Extension
-    extensions = [Extension('gurobimh', ['gurobimh.c'],)]
+# if '--cython' in sys.argv:
+#     from Cython.Build import cythonize
+#     extensions = cythonize(['gurobimh.pyx'])
+#     sys.argv.remove('--cython')
+# else:
+#     from distutils.extension import Extension
+#     extensions = [Extension('gurobimh', ['gurobimh.c'],)]
+from Cython.Build import cythonize
+extensions = cythonize(['gurobimh.pyx'])
 extensions[0].include_dirs = [join(GHOME, 'include')]
 extensions[0].library_dirs = [join(GHOME, 'lib')]
 extensions[0].libraries = ['gurobi60']

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-# distutils: libraries = ['gurobi60']
-# distutils: language = c
+# cython: profile=False
+# cython: boundscheck=False
+# cython: nonecheck=False
 # Copyright 2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -11,6 +12,8 @@ from __future__ import division, print_function
 from numbers import Number
 cimport numpy as np
 import numpy as np
+from cpython cimport array as c_array
+from array import array
 
 
 class GurobiError(Exception):
@@ -34,29 +37,25 @@ cpdef quicksum(iterable):
     Var or LinExpr objects."""
     cdef LinExpr result = LinExpr()
     for element in iterable:
-        if isinstance(element, Var):
-            result._vars.append(element)
-            result._coeffs.append(1)
-        elif isinstance(element, LinExpr):
-            result += <LinExpr>element
-        else:
-            assert isinstance(element, Number)
-            result._constant += <double>element
+        result += element
     return result
 
 
-cdef class Callbackcls:
+cdef class CallbackClass:
+    """Singleton class for callback constants"""
     cdef:
         readonly int MIPNODE
         readonly int MIPNODE_OBJBST
 
     def __init__(self):
         self.MIPNODE = GRB_CB_MIPNODE
-        self.MIPNODE_OBJBST = GRB_CB_MIP_OBJBST
+        self.MIPNODE_OBJBST = GRB_CB_MIPNODE_OBJBST
+        CallbackTypes[self.MIPNODE] = int
+        CallbackTypes[self.MIPNODE_OBJBST] = float
 
 
 cdef class AttrConstClass:
-
+    """Singleton class for attribute name constants"""
     cdef:
         readonly char* ModelSense
         readonly char* NumConstrs
@@ -64,9 +63,11 @@ cdef class AttrConstClass:
         readonly char* Status
 
         readonly char* IterCount
+        readonly char* NodeCount
         readonly char* Obj
         readonly char* ObjCon
         readonly char* ObjVal
+        readonly char* Start
         readonly char* X
 
         readonly char *ConstrName
@@ -79,9 +80,11 @@ cdef class AttrConstClass:
         self.Status = IntAttrs[b'status'] = GRB_INT_ATTR_STATUS
 
         self.IterCount = DblAttrs[b'itercount'] = GRB_DBL_ATTR_ITERCOUNT
+        self.NodeCount = DblAttrs[b'nodecount'] = GRB_DBL_ATTR_NODECOUNT
         self.Obj = DblAttrs[b'obj'] = GRB_DBL_ATTR_OBJ
         self.ObjCon = DblAttrs[b'objcon'] = GRB_DBL_ATTR_OBJCON
         self.ObjVal = DblAttrs[b'objval'] = GRB_DBL_ATTR_OBJVAL
+        self.Start = DblAttrs[b'start'] = GRB_DBL_ATTR_START
         self.X = DblAttrs[b'x'] = GRB_DBL_ATTR_X
 
         self.ConstrName = StrAttrs[b'constrname'] = GRB_STR_ATTR_CONSTRNAME
@@ -89,14 +92,20 @@ cdef class AttrConstClass:
 
 
 cdef class ParamConstClass:
-
+    """Singleton class for parameter name constants"""
     cdef:
+        readonly char* MIPFocus
         readonly char* Threads
         readonly char* OutputFlag
+        readonly char* PrePasses
+        readonly char* Presolve
 
     def __init__(self):
         self.Threads = IntParams[b'threads'] = GRB_INT_PAR_THREADS
         self.OutputFlag = IntParams[b'outputflag'] = GRB_INT_PAR_OUTPUTFLAG
+        self.PrePasses = IntParams[b'prepasses'] = GRB_INT_PAR_PREPASSES
+        self.Presolve = IntParams[b'presolve'] = GRB_INT_PAR_PRESOLVE
+        self.MIPFocus = IntParams[b'mipfocus'] = GRB_INT_PAR_MIPFOCUS
 
 
 cdef dict IntAttrs = {}
@@ -104,6 +113,7 @@ cdef dict DblAttrs = {}
 cdef dict StrAttrs = {}
 cdef dict IntParams = {}
 cdef dict DblParams = {}
+cdef dict CallbackTypes = {}
 
 cdef AttrConstClass cAttr = AttrConstClass()
 cdef ParamConstClass cParam = ParamConstClass()
@@ -137,7 +147,7 @@ cdef class GRBcls:
         self.GREATER_EQUAL = GRB_GREATER_EQUAL
         self.MAXIMIZE = GRB_MAXIMIZE
         self.MINIMIZE = GRB_MINIMIZE
-        self.callback = self.Callback = Callbackcls()
+        self.callback = self.Callback = CallbackClass()
         self.Param = self.param = cParam
         self.Attr = self.attr = cAttr
 
@@ -146,7 +156,7 @@ GRB = GRBcls()
 
 
 class Gurobicls:
-
+    """Emulate gurobipy.gorubi."""
     def version(self):
         cdef int major, minor, tech
         GRBversion(&major, &minor, &tech)
@@ -155,7 +165,12 @@ class Gurobicls:
 
 gurobi = Gurobicls()
 
+
 cdef class VarOrConstr:
+    """Super class vor Variables and Constants. Identified by their index and a pointer to the
+    model object.
+    """
+    #TODO: model should be weak-referecned as in gurobipy
 
     def __cinit__(self, Model model, int index):
         self.model = model
@@ -163,8 +178,13 @@ cdef class VarOrConstr:
 
     def __getattr__(self, key):
         if self.index < 0:
-            return 'Constraint not yet added to the model'
-        return self.model._getElementAttr(key, self.index)
+            raise '{} not yet added to the model'.format(self.__class__.__name__)
+        return self.model.getElementAttr(_chars(key).lower(), self.index)
+
+    def __setattr__(self, key, value):
+        if self.index < 0:
+            raise '{} not yet added to the model'.format(self.__class__.__name__)
+        self.model.setElementAttr(_chars(key).lower(), self.index, value)
 
     def __str__(self):
         ret = '<gurobimh.{} '.format(type(self).__name__)
@@ -184,10 +204,12 @@ cdef class VarOrConstr:
 cdef class Var(VarOrConstr):
 
     def __add__(self, other):
-        return LinExpr(self) + other
+        cdef LinExpr result = LinExpr(self)
+        LinExpr.addInplace(result, other)
+        return result
 
     def __mul__(self, other):
-        return LinExpr(self, other)
+        return LinExpr(other, self)
 
 
 cdef class Constr(VarOrConstr):
@@ -196,20 +218,32 @@ cdef class Constr(VarOrConstr):
 
 
 cdef char* _chars(s):
+    """Convert input string to bytes, no matter if *s* is unicode or bytestring"""
     if isinstance(s, unicode):
         # encode to the specific encoding used inside of the module
         s = (<unicode>s).encode('utf8')
     return s
 
 
+cdef int callbackFunction(GRBmodel *model, void *cbdata, int where, void *userdata):
+    """Used for GRBsetcallbackfunc to emulate gurobipy's behaviour"""
+    cdef Model theModel = <Model>userdata
+    theModel.cbData = cbdata
+    theModel.cbWhere = where
+    try:
+        theModel.callbackFn(theModel, where)
+    except Exception as e:
+        return GRB_ERROR_CALLBACK
+    return 0
+
+
 cdef class Model:
 
     def __init__(self, name=''):
-        cdef int error
         cdef char* cName = _chars(name)
-        error = GRBnewmodel(masterEnv, &self.model, cName, 0, NULL, NULL, NULL, NULL, NULL)
-        if error:
-            raise GurobiError('Error creating model: {}'.format(error))
+        self.error = GRBnewmodel(masterEnv, &self.model, cName, 0, NULL, NULL, NULL, NULL, NULL)
+        if self.error:
+            raise GurobiError('Error creating model: {}'.format(self.error))
         self.attrs = {}
         self._vars = []
         self._constrs = []
@@ -217,93 +251,112 @@ cdef class Model:
         self._varsRemovedSinceUpdate = []
         self._constrsAddedSinceUpdate = []
         self._constrsRemovedSinceUpdate = []
+        self.varInds = np.empty(25, dtype=np.intc)
+        self.needUpdate = False
+        self.callbackFn = None
 
     def setParam(self, param, value):
-        cdef int error
         if isinstance(param, unicode):
             param = (<unicode>param).encode('utf8')
-        if param.lower() in DblParams:
-            error = GRBsetdblparam(GRBgetenv(self.model), param, <double>value)
-        elif param.lower() in IntParams:
-            error = GRBsetintparam(GRBgetenv(self.model), param, <int>value)
+        param = param.lower()
+        if param in DblParams:
+            self.error = GRBsetdblparam(GRBgetenv(self.model), param, <double>value)
+        elif param in IntParams:
+            self.error = GRBsetintparam(GRBgetenv(self.model), param, <int>value)
         else:
-            raise NotImplementedError()
-        if error:
-            raise GurobiError('Error setting parameter: {}'.format(error))
+            raise GurobiError('Parameter {} not implemented or unknown'.format(param))
+        if self.error:
+            raise GurobiError('Error setting parameter: {}'.format(self.error))
 
 
     def __setattr__(self, key, value):
         self.attrs[key] = value
 
     def __getattr__(self, key):
-        cdef int error, intValue
+        cdef int intValue
         cdef double dblValue
         if isinstance(key, unicode):
             key = key.encode('utf8')
         if key.lower() in IntAttrs:
-            error = GRBgetintattr(self.model, key.lower(), &intValue)
-            if error:
-                raise GurobiError('Error retrieving int attr: {}'.format(error))
+            self.error = GRBgetintattr(self.model, key.lower(), &intValue)
+            if self.error:
+                raise GurobiError('Error retrieving int attr {}: {}'.format(key, self.error))
             return intValue
         elif key.lower() in DblAttrs:
-            error = GRBgetdblattr(self.model, key.lower(), &dblValue)
-            if error:
-                raise GurobiError('Error retrieving dbl attr: {}'.format(error))
+            self.error = GRBgetdblattr(self.model, key.lower(), &dblValue)
+            if self.error:
+                raise GurobiError('Error retrieving dbl attr: {}'.format(self.error))
             return dblValue
         return self.attrs[key]
 
 
-    cdef _getElementAttr(self, key, int element):
-        cdef int error, intValue
+    cdef getElementAttr(self, char * key, int element):
+        cdef int intValue
         cdef double dblValue
         cdef char *strValue
-        if isinstance(key, unicode):
-            key = key.encode('utf8')
-        if key.lower() in StrAttrs:
-            error = GRBgetstrattrelement(self.model, key.lower(), element, &strValue)
-            if error:
-                raise GurobiError('Error retrieving str attr: {}'.format(error))
+        if key in StrAttrs:
+            self.error = GRBgetstrattrelement(self.model, key, element, &strValue)
+            if self.error:
+                raise GurobiError('Error retrieving str attr: {}'.format(self.error))
             return str(strValue)
-        elif key.lower() in DblAttrs:
-            error = GRBgetdblattrelement(self.model, key.lower(), element, &dblValue)
-            if error:
-                raise GurobiError('Error retrieving dbl attr: {}'.format(error))
+        elif key in DblAttrs:
+            self.error = GRBgetdblattrelement(self.model, key, element, &dblValue)
+            if self.error:
+                raise GurobiError('Error retrieving dbl attr: {}'.format(self.error))
             return dblValue
         else:
             raise GurobiError("Unknown attribute '{}'".format(key))
 
+    cdef int setElementAttr(self, char * key, int element, newValue) except -1:
+        if key in StrAttrs:
+            self.error = GRBsetstrattrelement(self.model, key, element, <const char*>newValue)
+            if self.error:
+                raise GurobiError('Error setting str attr: {}'.format(self.error))
+        elif key in DblAttrs:
+            self.error = GRBsetdblattrelement(self.model, key, element, <double>newValue)
+            if self.error:
+                raise GurobiError('Error setting double attr: {}'.format(self.error))
+        else:
+            raise GurobiError('Unknonw attribute {}'.format(key))
 
     cpdef addVar(self, double lb=0, double ub=GRB_INFINITY, double obj=0.0,
                char vtype=GRB_CONTINUOUS, name=''):
-        cdef int error, vind
         cdef Var var
         if isinstance(name, unicode):
             name = name.encode('utf8')
-        error = GRBaddvar(self.model, 0, NULL, NULL, obj, lb, ub, vtype, name)
-        if error:
-            raise GurobiError('Error creating variable: {}'.format(error))
+        self.error = GRBaddvar(self.model, 0, NULL, NULL, obj, lb, ub, vtype, name)
+        if self.error:
+            raise GurobiError('Error creating variable: {}'.format(self.error))
         var = Var(self, -1)
         self._varsAddedSinceUpdate.append(var)
+        self.needUpdate = True
         return var
 
     cpdef addConstr(self, lhs, char sense, rhs, name=''):
-        cdef np.ndarray[ndim=1, dtype=int] vInd
-        cdef LinExpr _lhs = lhs if isinstance(lhs, LinExpr) else LinExpr(lhs)
-        cdef np.ndarray[ndim=1, dtype=double] coeffs
+        cdef LinExpr expr #= LinExpr(lhs) - rhs
         cdef int i
         cdef char* cName = _chars(name)
         cdef Constr constr
-        _lhs = _lhs - (rhs if isinstance(rhs, LinExpr) else LinExpr(rhs))
-        coeffs = np.array(_lhs._coeffs, dtype=np.double)
-        vInd = np.empty(coeffs.size, dtype=np.intc)
-        for i in range(vInd.size):
-            vInd[i] = (<Var>(_lhs._vars[i])).index
-            if vInd[i] < 0:
+        cdef Var var
+        cdef np.ndarray[dtype=int, ndim=1] varInds = self.varInds
+        if isinstance(lhs, LinExpr):
+            expr = lhs
+        else:
+            expr = LinExpr(lhs)
+        LinExpr.subtractInplace(expr, rhs)
+        if varInds.size < len(expr.coeffs):
+            self.varInds = np.empty(len(expr.coeffs), dtype=np.intc)
+            varInds = self.varInds
+        for i in range(len(expr.coeffs)):
+            var = <Var>expr.vars[i]
+            if  var.index < 0:
                 raise GurobiError('Variable not in model')
-        GRBaddconstr(self.model, vInd.size, <int*>vInd.data, <double*>coeffs.data, sense,
-                         -_lhs._constant, cName)
+            varInds[i] = var.index
+        GRBaddconstr(self.model, len(expr.coeffs), <int*>varInds.data, expr.coeffs.data.as_doubles, sense,
+                         -expr.constant, cName)
         constr = Constr(self, -1)
         self._constrsAddedSinceUpdate.append(constr)
+        self.needUpdate = True
         return constr
 
     cpdef setObjective(self, expression, sense=None):
@@ -311,21 +364,21 @@ cdef class Model:
         cdef int i, error
         cdef Var var
         if sense is not None:
-            error = GRBsetintattr(self.model, GRB_INT_ATTR_MODELSENSE, <int>sense)
-            if error:
-                raise GurobiError('Error setting objective sense: {}'.format(error))
-        for i in range(len(expr._coeffs)):
-            var = <Var>expr._vars[i]
+            self.error = GRBsetintattr(self.model, GRB_INT_ATTR_MODELSENSE, <int>sense)
+            if self.error:
+                raise GurobiError('Error setting objective sense: {}'.format(self.error))
+        for i in range(len(expr.coeffs)):
+            var = <Var>expr.vars[i]
             if var.index < 0:
                 raise GurobiError('Variable not in model')
-            error = GRBsetdblattrelement(self.model, GRB_DBL_ATTR_OBJ, var.index,
-                                             <double>expr._coeffs[i])
-            if error:
-                raise GurobiError('Error setting objective coefficient: {}'.format(error))
-        if expr._constant != 0:
-            error = GRBsetdblattr(self.model, GRB_DBL_ATTR_OBJCON, expr._constant)
-            if error:
-                raise GurobiError('Error setting objective constant: {}'.format(error))
+            self.error = GRBsetdblattrelement(self.model, GRB_DBL_ATTR_OBJ, var.index,
+                                         expr.coeffs.data.as_doubles[i])
+            if self.error:
+                raise GurobiError('Error setting objective coefficient: {}'.format(self.error))
+        if expr.constant != 0:
+            self.error = GRBsetdblattr(self.model, GRB_DBL_ATTR_OBJCON, expr.constant)
+            if self.error:
+                raise GurobiError('Error setting objective constant: {}'.format(self.error))
 
     cpdef getVars(self):
         return self._vars[:]
@@ -334,26 +387,28 @@ cdef class Model:
         return self._constrs[:]
 
     cpdef remove(self, VarOrConstr what):
-        cdef int error
         if what.index >= 0:
             if isinstance(what, Constr):
+                self.error = GRBdelconstrs(self.model, 1, &what.index)
+                if self.error:
+                    raise GurobiError('Error removing constraint: {}'.format(self.error))
                 self._constrsRemovedSinceUpdate.append(what.index)
-                error = GRBdelconstrs(self.model, 1, &what.index)
-                if error:
-                    raise GurobiError('Error removing constraint: {}'.format(error))
             else:
+                self.error = GRBdelvars(self.model, 1, &what.index)
+                if self.error:
+                    raise GurobiError('Error removing variable: {}'.format(self.error))
                 self._varsRemovedSinceUpdate.append(what.index)
-                error = GRBdelvars(self.model, 1, &what.index)
-                if error:
-                    raise GurobiError('Error removing variable: {}'.format(error))
             what.index = -2
+            self.needUpdate = True
 
     cpdef update(self):
-        cdef int error, numVars = self.NumVars, numConstrs = self.NumConstrs, i
+        cdef int numVars = self.NumVars, numConstrs = self.NumConstrs, i
         cdef VarOrConstr voc
+        if not self.needUpdate:
+            return
         error = GRBupdatemodel(self.model)
         if error:
-            raise GurobiError('Error updating the model: {}'.format(error))
+            raise GurobiError('Error updating the model: {}'.format(self.error))
         for i in sorted(self._varsRemovedSinceUpdate, reverse=True):
             voc = <Var>self._vars[i]
             voc.index = -3
@@ -382,92 +437,142 @@ cdef class Model:
             voc.index = numConstrs + i
             self._constrs.append(voc)
         self._constrsAddedSinceUpdate = []
+        self.needUpdate = False
 
     cpdef optimize(self, callback=None):
-        cdef int error
-        if callback:
-            raise NotImplementedError()
+        if callback is not None:
+            self.error = GRBsetcallbackfunc(self.model, callbackFunction, <void*>self)
+            if self.error:
+                raise GurobiError('Error installing callback: {}'.format(self.error))
+            self.callbackFn = callback
         self.update()
-        error = GRBoptimize(self.model)
-        if error:
-            raise GurobiError('Error optimizing model: {}'.format(error))
+        self.error = GRBoptimize(self.model)
+        self.callbackFn = None
+        if self.error:
+            raise GurobiError('Error optimizing model: {}'.format(self.error))
+
+    cpdef cbGet(self, int what):
+        cdef int intResult
+        cdef double dblResult = 0
+        if what not in CallbackTypes:
+            raise GurobiError('Unknown callback "what" requested: {}'.format(what))
+        elif CallbackTypes[what] is int:
+            self.error = GRBcbget(self.model, self.cbWhere, what, <void*> &intResult)
+            if self.error:
+                raise GurobiError('Error calling cbget: {}'.format(self.error))
+            return intResult
+        elif CallbackTypes[what] is float:
+            self.error = GRBcbget(self.cbData, self.cbWhere, what, <void*> &dblResult)
+            if self.error:
+                raise GurobiError('Error calling cbget: {}'.format(self.error))
+            return dblResult
+        else:
+            raise GurobiError()
 
     cpdef terminate(self):
         GRBterminate(self.model)
 
 
     cpdef write(self, filename):
-        cdef int error
         if isinstance(filename, unicode):
             filename = filename.encode('utf8')
-        error = GRBwrite(self.model, filename)
-        if error:
-            raise GurobiError('Error writing model: {}'.format(error))
+        self.error = GRBwrite(self.model, filename)
+        if self.error:
+            raise GurobiError('Error writing model: {}'.format(self.error))
 
     def __dealloc__(self):
         GRBfreemodel(self.model)
 
 
+cdef c_array.array dblOne = array('d', [1])
+
+
 cdef class LinExpr:
+
     def __init__(self, arg1=0.0, arg2=None):
-        self._vars = []
-        self._coeffs = []
-        self._constant = 0
+        cdef int i
+        self.constant = 0
         if arg2 is None:
             if isinstance(arg1, Var):
-                self._vars.append(arg1)
-                self._coeffs.append(1.0)
+                self.vars =[arg1]
+                self.coeffs = c_array.copy(dblOne)
+                return
             elif isinstance(arg1, Number):
-                self._constant = float(arg1)
+                self.constant = float(arg1)
+                self.coeffs = c_array.clone(dblOne, 0, False)
+                self.vars = []
+                return
             elif isinstance(arg1, LinExpr):
-                self._vars = (<LinExpr>arg1)._vars[:]
-                self._coeffs = (<LinExpr>arg1)._coeffs[:]
-                self._constant = (<LinExpr>arg1)._constant
+                self.vars = (<LinExpr>arg1).vars[:]
+                self.coeffs = c_array.copy((<LinExpr>arg1).coeffs)
+                self.constant = (<LinExpr>arg1).constant
+                return
             else:
                 arg1, arg2 = zip(*arg1)
+        if isinstance(arg1, Var):
+            self.vars = [arg1]
+            self.coeffs = c_array.clone(dblOne, 1, False)
+            self.coeffs.data.as_doubles[0] = arg2
         else:
-            if isinstance(arg1, Var):
-                self._vars.append(arg1)
-                self._coeffs.append(float(arg2))
-            else:
-                for coeff, var in zip(arg1, arg2):
-                    self._vars.append(<Var>var)
-                    self._coeffs.append(float(coeff))
+            self.coeffs = c_array.clone(dblOne, len(arg1), False)
+            for i in range(len(self.coeffs)):
+                self.coeffs.data.as_doubles[i] = arg1[i]
+            self.vars = list(arg2)
+
+    @staticmethod
+    cdef void addInplace(LinExpr first, other):
+        cdef LinExpr _other
+        if isinstance(other, LinExpr):
+            _other = other
+            first.vars += _other.vars
+            c_array.extend(first.coeffs, _other.coeffs)
+            first.constant += _other.constant
+        elif isinstance(other, Var):
+            first.vars.append(other)
+            c_array.resize_smart(first.coeffs, len(first.coeffs) + 1)
+            first.coeffs.data.as_doubles[len(first.coeffs)-1] = 1
+        else:
+            first.constant += <double>other
+
+    @staticmethod
+    cdef void subtractInplace(LinExpr first, other):
+        cdef LinExpr _other
+        cdef int origLen = len(first.coeffs)
+        cdef int i
+        if isinstance(other, LinExpr):
+            _other = other
+            first.vars += _other.vars
+            c_array.extend(first.coeffs, _other.coeffs)
+            for i in range(origLen, len(first.coeffs)):
+                first.coeffs.data.as_doubles[i] *= -1
+            first.constant -= _other.constant
+        elif isinstance(other, Var):
+            first.vars.append(other)
+            c_array.resize_smart(first.coeffs, len(first.coeffs) + 1)
+            first.coeffs.data.as_doubles[len(first.coeffs) - 1] = -1
+        else:
+            first.constant -= <double>other
+
+    cdef LinExpr _copy(self):
+        cdef LinExpr result = LinExpr(self.constant)
+        result.vars = self.vars[:]
+        result.coeffs = c_array.copy(self.coeffs)
+        return result
 
     def __add__(LinExpr self, other):
-        cdef LinExpr _other, result
-        cdef int i
-        if not isinstance(other, LinExpr):
-            _other = LinExpr(other)
-        else:
-            _other = <LinExpr>other
-        result = LinExpr()
-        result._vars = self._vars + _other._vars
-        result._coeffs = self._coeffs + _other._coeffs
-        result._constant = self._constant + _other._constant
+        cdef LinExpr result = self._copy()
+        LinExpr.addInplace(result, other)
         return result
 
     def __sub__(LinExpr self, other):
-        cdef LinExpr _other, result
-        cdef int i
-        if not isinstance(other, LinExpr):
-            _other = LinExpr(other)
-        else:
-            _other = <LinExpr>other
-        result = LinExpr()
-        result._vars = self._vars + _other._vars
-        result._coeffs = self._coeffs + [-c for c in _other._coeffs]
-        result._constant = self._constant - _other._constant
+        cdef LinExpr result = self._copy()
+        LinExpr.subtractInplace(result, other)
         return result
 
+    def __isub__(LinExpr self, other):
+        LinExpr.subtractInplace(self, other)
+        return self
+
     def __iadd__(LinExpr self, other):
-        cdef LinExpr _other
-        cdef int i
-        if not isinstance(other, LinExpr):
-            _other = LinExpr(other)
-        else:
-            _other = <LinExpr>other
-        self._vars += _other._vars
-        self._coeffs += _other._coeffs
-        self._constant += other._constant
+        LinExpr.addInplace(self, other)
         return self
