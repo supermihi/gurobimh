@@ -1,14 +1,45 @@
-# -*- coding: utf-8 -*-
-# distutils: include_dirs = /opt/gurobi600/linux64/include
-# distutils: libraries = ['gurobi60', 'gurobi_c++']
-# Copyright 2015 Michael Helmling
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License version 3 as
-# published by the Free Software Foundation
+cpdef quicksum(iterable)
 
-"""cdef headers for talking to the Gurobi C library through Cython."""
 
+cdef class VarOrConstr:
+    cdef int index
+    cdef Model model
+
+
+cdef class Var(VarOrConstr):
+    pass
+
+
+cdef class Constr(VarOrConstr):
+    pass
+
+
+cdef class LinExpr:
+    cdef list _vars
+    cdef list _coeffs
+    cdef double _constant
+
+
+cdef class Model:
+    cdef GRBmodel *model
+    cdef dict attrs
+    cdef list _vars
+    cdef list _constrs
+    cdef list _varsAddedSinceUpdate
+    cdef list _varsRemovedSinceUpdate
+    cdef list _constrsAddedSinceUpdate
+    cdef list _constrsRemovedSinceUpdate
+    cdef _getElementAttr(self, key, int element)
+    cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?)
+    cpdef addConstr(self, lhs, char sense, rhs, name=?)
+    cpdef setObjective(self, expression, sense=*)
+    cpdef terminate(self)
+    cpdef getVars(self)
+    cpdef getConstrs(self)
+    cpdef remove(self, VarOrConstr what)
+    cpdef update(self)
+    cpdef optimize(self, callback=?)
+    cpdef write(self, filename)
 
 
 cdef extern from 'gurobi_c.h':
@@ -18,23 +49,28 @@ cdef extern from 'gurobi_c.h':
         pass
     const char GRB_BINARY, GRB_CONTINUOUS, GRB_INTEGER
     const char GRB_EQUAL, GRB_LESS_EQUAL, GRB_GREATER_EQUAL
+
     const char *GRB_INT_ATTR_MODELSENSE
-    const char *GRB_DBL_ATTR_OBJ
-    const char *GRB_DBL_ATTR_X
-    const char *GRB_DBL_ATTR_OBJVAL
-    const char *GRB_DBL_ATTR_OBJCON
-    const char *GRB_INT_PAR_OUTPUTFLAG
     const char *GRB_INT_ATTR_NUMCONSTRS
     const char *GRB_INT_ATTR_NUMVARS
     const char *GRB_INT_ATTR_STATUS
+
     const char *GRB_DBL_ATTR_ITERCOUNT
     const char *GRB_DBL_ATTR_SLACK
     const char *GRB_DBL_ATTR_LB
     const char *GRB_DBL_ATTR_UB
+    const char *GRB_DBL_ATTR_OBJ
+    const char *GRB_DBL_ATTR_X
+    const char *GRB_DBL_ATTR_OBJVAL
+    const char *GRB_DBL_ATTR_OBJCON
+
     const char *GRB_STR_ATTR_CONSTRNAME
+    const char *GRB_STR_ATTR_VARNAME
+
     const char *GRB_INT_PAR_METHOD
     const char *GRB_INT_PAR_THREADS
     const char *GRB_INT_PAR_OUTPUTFLAG
+
     const int GRB_MAXIMIZE, GRB_MINIMIZE, GRB_INFEASIBLE, GRB_OPTIMAL, GRB_INTERRUPTED, \
         GRB_INF_OR_UNBD, GRB_UNBOUNDED
     const double GRB_INFINITY

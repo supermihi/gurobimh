@@ -21,16 +21,16 @@ except KeyError:
 
 if '--cython' in sys.argv:
     from Cython.Build import cythonize
-    extensions = cythonize(['gurobipy.pyx'])
+    extensions = cythonize(['gurobimh.pyx'])
     sys.argv.remove('--cython')
 else:
     from distutils.extension import Extension
-    extensions = [Extension('gurobipy', ['gurobipy.c'],)]
+    extensions = [Extension('gurobimh', ['gurobimh.c'],)]
 extensions[0].include_dirs = [join(GHOME, 'include')]
 extensions[0].library_dirs = [join(GHOME, 'lib')]
 extensions[0].libraries = ['gurobi60']
 setup(
-    name='gurobipy',
+    name='gurobimh',
     version='0.2',
     author='Michael Helmling',
     author_email='helmling@uni-koblenz.de',

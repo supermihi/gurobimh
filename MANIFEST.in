@@ -1,2 +1,2 @@
-include gurobipy.pyx
-include gurobipy.pxd
+include gurobimh.pyx
+include gurobimh.pxd
