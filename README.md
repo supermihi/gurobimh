@@ -38,6 +38,11 @@ Download the package and type:
 
 In both commands, replace ``python`` by an appropriate call to your Python interpreter.
 
+
+Usage
+-----
+Simply replace any `gurobipy` import statements with `gurobimh`. If anything goes wrong, file a bug!
+
 Contact
 -------
 Please contact [me](helmling@uni-koblenz.de) or use the GitHub features for comments, bugs etc.
