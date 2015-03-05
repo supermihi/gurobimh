@@ -10,7 +10,7 @@ Overview
   to rely on Gurobi officially supporting your desired Python version.
 * `gurobimh`'s performance is much better, especially when modifying models a lot (like in a hand-written
   branch and bound solver).
-* `gurobimh` is free software an can be easily extended
+* `gurobimh` is free software an can be easily extended.
 * `gurobimh` ships Cython `pxd` file which allows you to write statically typed Cython programs
   for virtally C performance.
   

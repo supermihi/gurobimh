@@ -371,8 +371,10 @@ cdef class Model:
             if  var.index < 0:
                 raise GurobiError('Variable not in model')
             varInds[i] = var.index
-        GRBaddconstr(self.model, len(expr.coeffs), <int*>varInds.data, expr.coeffs.data.as_doubles, sense,
-                         -expr.constant, cName)
+        self.error = GRBaddconstr(self.model, len(expr.coeffs), <int*>varInds.data,
+                                  expr.coeffs.data.as_doubles, sense, -expr.constant, cName)
+        if self.error:
+            raise GurobiError('Error adding constraint: {}'.format(self.error))
         constr = Constr(self, -1)
         self._constrsAddedSinceUpdate.append(constr)
         self.needUpdate = True
