@@ -439,7 +439,6 @@ cdef class Model:
         cdef LinExpr expr = expression if isinstance(expression, LinExpr) else LinExpr(expression)
         cdef int i, error, length
         cdef Var var
-
         if sense is not None:
             self.error = GRBsetintattr(self.model, GRB_INT_ATTR_MODELSENSE, <int>sense)
             if self.error:
@@ -455,6 +454,7 @@ cdef class Model:
             self.error = GRBsetdblattr(self.model, GRB_DBL_ATTR_OBJCON, expr.constant)
             if self.error:
                 raise GurobiError('Error setting objective constant: {}'.format(self.error))
+        self.needUpdate = True
 
     cpdef getVars(self):
         return self._vars[:]
