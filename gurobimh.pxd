@@ -23,8 +23,8 @@ cdef class LinExpr:
     cdef double constant
     cdef LinExpr _copy(self)
     @staticmethod
-    cdef void addInplace(LinExpr first, other)
-    cdef void subtractInplace(LinExpr first, other)
+    cdef int addInplace(LinExpr first, other) except -1
+    cdef int subtractInplace(LinExpr first, other) except -1
 
 
 cdef class Model:
@@ -71,33 +71,6 @@ cdef extern from 'gurobi_c.h':
         pass
     const char GRB_BINARY, GRB_CONTINUOUS, GRB_INTEGER
     const char GRB_EQUAL, GRB_LESS_EQUAL, GRB_GREATER_EQUAL
-
-    const char *GRB_INT_ATTR_MODELSENSE
-    const char *GRB_INT_ATTR_NUMCONSTRS
-    const char *GRB_INT_ATTR_NUMVARS
-    const char *GRB_INT_ATTR_STATUS
-
-    const char *GRB_DBL_ATTR_ITERCOUNT
-    const char *GRB_DBL_ATTR_NODECOUNT
-    const char *GRB_DBL_ATTR_SLACK
-    const char *GRB_DBL_ATTR_LB
-    const char *GRB_DBL_ATTR_UB
-    const char *GRB_DBL_ATTR_OBJ
-    const char *GRB_DBL_ATTR_X
-    const char *GRB_DBL_ATTR_OBJVAL
-    const char *GRB_DBL_ATTR_OBJCON
-    const char *GRB_DBL_ATTR_START
-
-
-    const char *GRB_STR_ATTR_CONSTRNAME
-    const char *GRB_STR_ATTR_VARNAME
-
-    const char *GRB_INT_PAR_METHOD
-    const char *GRB_INT_PAR_MIPFOCUS
-    const char *GRB_INT_PAR_THREADS
-    const char *GRB_INT_PAR_OUTPUTFLAG
-    const char *GRB_INT_PAR_PREPASSES
-    const char *GRB_INT_PAR_PRESOLVE
 
     const int GRB_MAXIMIZE, GRB_MINIMIZE, GRB_INFEASIBLE, GRB_OPTIMAL, GRB_INTERRUPTED, \
         GRB_INF_OR_UNBD, GRB_UNBOUNDED
