@@ -230,6 +230,15 @@ cdef class Var(VarOrConstr):
     def __mul__(self, other):
         return LinExpr(other, self)
 
+    def __richcmp__(self, other, int op):
+        if op == 2: # __eq__
+            return TempConstr(LinExpr(self), GRB_EQUAL, other)
+        elif op == 1: # __leq__
+            return TempConstr(LinExpr(self), GRB_LESS_EQUAL, other)
+        elif op == 5: # __geq__
+            return TempConstr(LinExpr(self), GRB_GREATER_EQUAL, other)
+        raise NotImplementedError()
+
 
 cdef class Constr(VarOrConstr):
     pass
@@ -387,11 +396,16 @@ cdef class Model:
             varCoeffs[i] = coeff
         return lenDct
 
-    cpdef addConstr(self, lhs, char sense, rhs, name=''):
-        cdef LinExpr expr = LinExpr(lhs)
+    cpdef addConstr(self, lhs, char sense=-1, rhs=None, name=''):
+        cdef LinExpr expr
         cdef int lenDct
         cdef Constr constr
-        LinExpr.subtractInplace(expr, rhs)
+        if isinstance(lhs, TempConstr):
+            expr = (<TempConstr>lhs).lhs - (<TempConstr>lhs).rhs
+            sense = (<TempConstr>lhs).sense
+        else:
+            expr = LinExpr(lhs)
+            LinExpr.subtractInplace(expr, rhs)
         lenDct = self._compressLinExpr(expr)
         self.error = GRBaddconstr(self.model, lenDct, self._varInds.data.as_ints,
                                   self._varCoeffs.data.as_doubles, sense,
@@ -653,5 +667,21 @@ cdef class LinExpr:
         LinExpr.addInplace(self, other)
         return self
 
+    def __richcmp__(self, other, int op):
+        if op == 2: # __eq__
+            return TempConstr(self, GRB_EQUAL, other)
+        elif op == 1: # __leq__
+            return TempConstr(self, GRB_LESS_EQUAL, other)
+        elif op == 5: # __geq__
+            return TempConstr(self, GRB_GREATER_EQUAL, other)
+        raise NotImplementedError()
+
     def __repr__(self):
         return ' + '.join('{}*{}'.format(c, v) for c, v in zip(self.coeffs, self.vars)) + ' + {}'.format(self.constant)
+
+cdef class TempConstr:
+
+    def __init__(self, lhs, char sense, rhs):
+        self.lhs = lhs if isinstance(lhs, LinExpr) else LinExpr(lhs)
+        self.rhs = rhs if isinstance(rhs, LinExpr) else LinExpr(rhs)
+        self.sense = sense

@@ -48,7 +48,7 @@ cdef class Model:
     cdef dict _leDct
     cdef int _compressLinExpr(self, LinExpr expr) except -1
     cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?)
-    cpdef addConstr(self, lhs, char sense, rhs, name=?)
+    cpdef addConstr(self, lhs, char sense=?, rhs=?, name=?)
     cdef fastAddConstr(self, double[:] coeffs, list vars, char sense, double rhs, name=?)
     cpdef setObjective(self, expression, sense=*)
     cpdef terminate(self)
@@ -60,6 +60,9 @@ cdef class Model:
     cpdef cbGet(self, int what)
     cpdef write(self, filename)
 
+cdef class TempConstr:
+    cdef LinExpr rhs, lhs
+    cdef char sense
 
 cdef extern from 'gurobi_c.h':
     ctypedef struct GRBenv:
