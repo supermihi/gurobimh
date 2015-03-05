@@ -1,4 +1,3 @@
-cimport numpy as np
 from cpython cimport array
 
 cpdef quicksum(iterable)
