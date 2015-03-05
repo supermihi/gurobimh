@@ -492,7 +492,6 @@ cdef class Model:
             voc.index = -3
             del self._vars[i]
             for voc in self._vars[i:]:
-                assert voc.index > 0
                 voc.index -= 1
             numVars -= 1
         self._varsRemovedSinceUpdate = []
@@ -501,7 +500,6 @@ cdef class Model:
             voc.index = -3
             del self._constrs[i]
             for voc in self._constrs[i:]:
-                assert voc.index > 0
                 voc.index -= 1
             numConstrs -= 1
         self._constrsRemovedSinceUpdate = []
