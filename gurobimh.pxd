@@ -18,6 +18,7 @@ cdef class Constr(VarOrConstr):
 
 
 cdef class LinExpr:
+    cdef int length
     cdef list vars
     cdef array.array coeffs
     cdef double constant
@@ -43,9 +44,13 @@ cdef class Model:
     cdef int cbWhere
     cdef getElementAttr(self, char* key, int element)
     cdef int setElementAttr(self, char* key, int element, value) except -1
-    cdef np.ndarray varInds
+    cdef array.array _varInds
+    cdef array.array _varCoeffs
+    cdef dict _leDct
+    cdef int _compressLinExpr(self, LinExpr expr) except -1
     cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?)
     cpdef addConstr(self, lhs, char sense, rhs, name=?)
+    cdef fastAddConstr(self, double[:] coeffs, list vars, char sense, double rhs, name=?)
     cpdef setObjective(self, expression, sense=*)
     cpdef terminate(self)
     cpdef getVars(self)
@@ -128,6 +133,7 @@ cdef extern from 'gurobi_c.h':
     int GRBupdatemodel (GRBmodel *)
     int GRBaddconstr (GRBmodel *, int numnz, int *cind, double *cval, char sense, double rhs, const char *constrname)
     int GRBdelconstrs (GRBmodel *, int numdel, int *ind)
+    int GRBchgcoeffs (GRBmodel *, int numchgs, int *cind, int *vind, double *val)
     int GRBdelvars (GRBmodel *, int numdel, int *ind)
     int GRBoptimize (GRBmodel *)
     int GRBsetcallbackfunc (GRBmodel *, int	(*cb)(GRBmodel *model, void *cbdata, int where, void *usrdata),

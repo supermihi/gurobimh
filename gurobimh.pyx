@@ -10,8 +10,6 @@
 
 from __future__ import division, print_function
 from numbers import Number
-cimport numpy as np
-import numpy as np
 from cpython cimport array as c_array
 from array import array
 
@@ -269,9 +267,11 @@ cdef class Model:
         self._varsRemovedSinceUpdate = []
         self._constrsAddedSinceUpdate = []
         self._constrsRemovedSinceUpdate = []
-        self.varInds = np.empty(25, dtype=np.intc)
+        self._varInds = array('i', [0]*25)
+        self._varCoeffs = array('d', [0]*25)
         self.needUpdate = False
         self.callbackFn = None
+        self._leDct = {}
         if _create:
             self.error = GRBnewmodel(masterEnv, &self.model, _chars(name),
                                      0, NULL, NULL, NULL, NULL, NULL)
@@ -355,24 +355,65 @@ cdef class Model:
         self.needUpdate = True
         return var
 
+    cdef int _compressLinExpr(self, LinExpr expr) except -1:
+        """Compresses linear expressions by adding up coefficients of variables appearing more than
+        once. The resulting compressed expression is stored in self.varInds / self.varCoeffs.
+        :returns: Length of compressed expression
+        """
+        cdef int i, j, lenDct
+        cdef double coeff
+        cdef Var var
+        cdef c_array.array[int] varInds
+        cdef c_array.array[double] varCoeffs
+        self._leDct.clear()
+        for i in range(expr.length):
+            var = <Var>expr.vars[i]
+            if var.index < 0:
+                raise GurobiError('Variable not in model')
+            if var.index in self._leDct:
+                self._leDct[var.index] += expr.coeffs.data.as_doubles[i]
+            else:
+                self._leDct[var.index] = expr.coeffs.data.as_doubles[i]
+        lenDct = len(self._leDct)
+        if len(self._varInds) < lenDct:
+            c_array.resize(self._varInds, lenDct)
+            c_array.resize(self._varCoeffs, lenDct)
+        c_array.zero(self._varCoeffs)
+        varInds = self._varInds
+        varCoeffs = self._varCoeffs
+
+        for i, (j, coeff) in enumerate(self._leDct.items()):
+            varInds[i] = j
+            varCoeffs[i] = coeff
+        return lenDct
+
     cpdef addConstr(self, lhs, char sense, rhs, name=''):
         cdef LinExpr expr = LinExpr(lhs)
-        cdef int i
-        cdef char* cName = _chars(name)
+        cdef int lenDct
         cdef Constr constr
-        cdef Var var
-        cdef np.ndarray[dtype=int, ndim=1] varInds = self.varInds
         LinExpr.subtractInplace(expr, rhs)
-        if varInds.size < len(expr.coeffs):
-            self.varInds = np.empty(len(expr.coeffs), dtype=np.intc)
-            varInds = self.varInds
-        for i in range(len(expr.coeffs)):
-            var = <Var>expr.vars[i]
-            if  var.index < 0:
-                raise GurobiError('Variable not in model')
-            varInds[i] = var.index
-        self.error = GRBaddconstr(self.model, len(expr.coeffs), <int*>varInds.data,
-                                  expr.coeffs.data.as_doubles, sense, -expr.constant, cName)
+        lenDct = self._compressLinExpr(expr)
+        self.error = GRBaddconstr(self.model, lenDct, self._varInds.data.as_ints,
+                                  self._varCoeffs.data.as_doubles, sense,
+                                  -expr.constant, _chars(name))
+        if self.error:
+            raise GurobiError('Error adding constraint: {}'.format(self.error))
+        constr = Constr(self, -1)
+        self._constrsAddedSinceUpdate.append(constr)
+        self.needUpdate = True
+        return constr
+
+    cdef fastAddConstr(self, double[:] coeffs, list vars, char sense, double rhs, name=''):
+        cdef int[:] varInds = self._varInds
+        cdef int i
+        cdef Constr constr
+        if len(self._varInds) < coeffs.size:
+            c_array.resize(self._varInds, coeffs.size)
+            c_array.resize(self._varCoeffs, coeffs.size)
+        for i in range(coeffs.size):
+            varInds[i] = (<Var>vars[i]).index
+        self.error = GRBaddconstr(self.model, coeffs.size, &varInds[0],
+                                  &coeffs[0], sense, rhs, _chars(name))
         if self.error:
             raise GurobiError('Error adding constraint: {}'.format(self.error))
         constr = Constr(self, -1)
@@ -382,18 +423,18 @@ cdef class Model:
 
     cpdef setObjective(self, expression, sense=None):
         cdef LinExpr expr = expression if isinstance(expression, LinExpr) else LinExpr(expression)
-        cdef int i, error
+        cdef int i, error, length
         cdef Var var
+
         if sense is not None:
             self.error = GRBsetintattr(self.model, GRB_INT_ATTR_MODELSENSE, <int>sense)
             if self.error:
                 raise GurobiError('Error setting objective sense: {}'.format(self.error))
-        for i in range(len(expr.coeffs)):
-            var = <Var>expr.vars[i]
-            if var.index < 0:
-                raise GurobiError('Variable not in model')
-            self.error = GRBsetdblattrelement(self.model, GRB_DBL_ATTR_OBJ, var.index,
-                                         expr.coeffs.data.as_doubles[i])
+        length = self._compressLinExpr(expr)
+        for i in range(length):
+            self.error = GRBsetdblattrelement(self.model, GRB_DBL_ATTR_OBJ,
+                                              self._varInds.data.as_ints[i],
+                                              self._varCoeffs.data.as_doubles[i])
             if self.error:
                 raise GurobiError('Error setting objective coefficient: {}'.format(self.error))
         if expr.constant != 0:
@@ -514,21 +555,24 @@ cdef class LinExpr:
 
     def __init__(self, arg1=0.0, arg2=None):
         cdef int i
-        self.constant = 0
         if arg2 is None:
             if isinstance(arg1, Var):
+                self.constant = 0
                 self.vars =[arg1]
                 self.coeffs = c_array.copy(dblOne)
+                self.length = 1
                 return
             elif isinstance(arg1, Number):
                 self.constant = float(arg1)
                 self.coeffs = c_array.clone(dblOne, 0, False)
                 self.vars = []
+                self.length = 0
                 return
             elif isinstance(arg1, LinExpr):
                 self.vars = (<LinExpr>arg1).vars[:]
                 self.coeffs = c_array.copy((<LinExpr>arg1).coeffs)
                 self.constant = (<LinExpr>arg1).constant
+                self.length = len(self.coeffs)
                 return
             else:
                 arg1, arg2 = zip(*arg1)
@@ -536,11 +580,15 @@ cdef class LinExpr:
             self.vars = [arg1]
             self.coeffs = c_array.clone(dblOne, 1, False)
             self.coeffs.data.as_doubles[0] = arg2
+            self.constant = 0
+            self.length = 1
         else:
-            self.coeffs = c_array.clone(dblOne, len(arg1), False)
-            for i in range(len(self.coeffs)):
+            self.length = len(arg1)
+            self.coeffs = c_array.clone(dblOne, self.length, False)
+            for i in range(self.length):
                 self.coeffs.data.as_doubles[i] = arg1[i]
             self.vars = list(arg2)
+            self.constant = 0
 
     @staticmethod
     cdef void addInplace(LinExpr first, other):
@@ -550,10 +598,12 @@ cdef class LinExpr:
             first.vars += _other.vars
             c_array.extend(first.coeffs, _other.coeffs)
             first.constant += _other.constant
+            first.length += _other.length
         elif isinstance(other, Var):
             first.vars.append(other)
             c_array.resize_smart(first.coeffs, len(first.coeffs) + 1)
             first.coeffs.data.as_doubles[len(first.coeffs)-1] = 1
+            first.length += 1
         else:
             first.constant += <double>other
 
@@ -569,17 +619,20 @@ cdef class LinExpr:
             for i in range(origLen, len(first.coeffs)):
                 first.coeffs.data.as_doubles[i] *= -1
             first.constant -= _other.constant
+            first.length += _other.length
         elif isinstance(other, Var):
             first.vars.append(other)
             c_array.resize_smart(first.coeffs, len(first.coeffs) + 1)
             first.coeffs.data.as_doubles[len(first.coeffs) - 1] = -1
+            first.length += 1
         else:
             first.constant -= <double>other
 
-    cdef LinExpr _copy(self):
+    cdef LinExpr _copy(LinExpr self):
         cdef LinExpr result = LinExpr(self.constant)
         result.vars = self.vars[:]
         result.coeffs = c_array.copy(self.coeffs)
+        result.length = self.length
         return result
 
     def __add__(LinExpr self, other):

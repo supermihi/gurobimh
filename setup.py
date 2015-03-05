@@ -47,7 +47,6 @@ setup(
     author='Michael Helmling',
     author_email='helmling@uni-koblenz.de',
     license='GPL3',
-    install_requires=['numpy'],
     ext_modules=extensions,
     include_package_data=True,
 )
