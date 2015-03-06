@@ -41,6 +41,7 @@ cdef class Model:
     cdef object callbackFn
     cdef void *cbData
     cdef int cbWhere
+    cdef bint _cbInterrupt
     # internal helpers
     cdef int _compressLinExpr(self, LinExpr expr) except -1
 

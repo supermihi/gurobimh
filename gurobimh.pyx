@@ -136,8 +136,9 @@ cdef class GRBcls:
         readonly char BINARY
         readonly char CONTINUOUS
         readonly char INTEGER
-        readonly int MAXIMIZE, MINIMIZE, INFEASIBLE, OPTIMAL, INTERRUPTED, \
-            INF_OR_UNBD, UNBOUNDED
+        readonly int MAXIMIZE, MINIMIZE
+        # status codes
+        readonly int INFEASIBLE, OPTIMAL, INTERRUPTED, INF_OR_UNBD, UNBOUNDED
         readonly char LESS_EQUAL, EQUAL, GREATER_EQUAL
         readonly object Callback, callback, Param, param, Attr, attr
     # workaround: INFINITY class member clashes with gcc macro INFINITY
@@ -149,7 +150,9 @@ cdef class GRBcls:
         self.BINARY = GRB_BINARY
         self.CONTINUOUS = GRB_CONTINUOUS
         self.INTEGER = GRB_INTEGER
+        self.INFEASIBLE = GRB_INFEASIBLE
         self.OPTIMAL = GRB_OPTIMAL
+        self.INTERRUPTED = GRB_INTERRUPTED
         self.INF_OR_UNBD = GRB_INF_OR_UNBD
         self.UNBOUNDED = GRB_UNBOUNDED
         self.LESS_EQUAL = GRB_LESS_EQUAL
@@ -258,9 +261,11 @@ cdef int callbackFunction(GRBmodel *model, void *cbdata, int where, void *userda
     theModel.cbWhere = where
     try:
         theModel.callbackFn(theModel, where)
+    except KeyboardInterrupt:
+        theModel._cbInterrupt = True
+        theModel.terminate()
     except Exception as e:
         return GRB_ERROR_CALLBACK
-    return 0
 
 
 cdef class Model:
@@ -613,6 +618,7 @@ cdef class Model:
             if self.error:
                 raise GurobiError('Error installing callback: {}'.format(self.error))
             self.callbackFn = callback
+            self._cbInterrupt = False
         self.update()
         self.error = GRBoptimize(self.model)
         if self.error:
@@ -622,6 +628,8 @@ cdef class Model:
             self.error = GRBsetcallbackfunc(self.model, NULL, NULL)
             if self.error:
                 raise GurobiError('Error unsetting callback: {}'.format(self.error))
+        if self._cbInterrupt:
+            raise KeyboardInterrupt()
 
     cpdef cbGet(self, int what):
         cdef int intResult
