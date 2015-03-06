@@ -27,10 +27,15 @@ except KeyError:
 #     from distutils.extension import Extension
 #     extensions = [Extension('gurobimh', ['gurobimh.c'],)]
 from Cython.Build import cythonize
-extensions = cythonize(['gurobimh.pyx'])
+directives = {}
+if '--profile' in sys.argv:
+        directives['profile'] = True
+        sys.argv.remove('--profile')
+extensions = cythonize(['gurobimh.pyx'], compiler_directives=directives)
 extensions[0].include_dirs = [join(GHOME, 'include')]
 extensions[0].library_dirs = [join(GHOME, 'lib')]
 extensions[0].libraries = ['gurobi60']
+
 
 setup(
     name='gurobimh',

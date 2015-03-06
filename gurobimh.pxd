@@ -1,4 +1,5 @@
 from cpython cimport array
+DEF ERRORCODE = -987654321
 
 cpdef quicksum(iterable)
 
@@ -30,26 +31,40 @@ cdef class LinExpr:
 cdef class Model:
     cdef GRBmodel *model
     cdef int error
-    cdef dict attrs
-    cdef list _vars
-    cdef list _constrs
-    cdef list _varsAddedSinceUpdate
-    cdef list _varsRemovedSinceUpdate
-    cdef list _constrsAddedSinceUpdate
-    cdef list _constrsRemovedSinceUpdate
+    cdef dict attrs  # user attributes
+    cdef list _vars, _varsAddedSinceUpdate, _varsRemovedSinceUpdate
+    cdef list _constrs,  _constrsAddedSinceUpdate, _constrsRemovedSinceUpdate
     cdef bint needUpdate
+    cdef array.array _varInds, _varCoeffs
+    cdef dict _leDct
+    # callback handling
     cdef object callbackFn
     cdef void *cbData
     cdef int cbWhere
-    cdef getElementAttr(self, char* key, int element)
-    cdef int setElementAttr(self, char* key, int element, value) except -1
-    cdef array.array _varInds
-    cdef array.array _varCoeffs
-    cdef dict _leDct
+    # internal helpers
     cdef int _compressLinExpr(self, LinExpr expr) except -1
+
+
+    # =======================
+    # public Cython interface
+    # =======================
+    #
+    # attribute handling
+    cdef getElementAttr(self, char* key, int element)
+    cdef int getIntAttr(self, char *attr) except ERRORCODE
+    cdef double getDblAttr(self, char *attr) except ERRORCODE
+    cdef double getElementDblAttr(self, char *attr, int element) except ERRORCODE
+    cdef int setElementAttr(self, char* key, int element, value) except -1
+    # other
+    cdef fastSetObjective(self, int start, int len, double[::1] coeffs)
+    cdef Constr fastAddConstr(self, double[::1] coeffs, list vars, char sense, double rhs, name=?)
+    cdef Constr fastAddConstr2(self, double[::1] coeffs, int[::1] varIndices, char sense, double rhs, name=?)
+
+    # =======================
+    # public Python interface
+    # =======================
     cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?)
     cpdef addConstr(self, lhs, char sense=?, rhs=?, name=?)
-    cdef fastAddConstr(self, double[:] coeffs, list vars, char sense, double rhs, name=?)
     cpdef setObjective(self, expression, sense=*)
     cpdef terminate(self)
     cpdef getVars(self)

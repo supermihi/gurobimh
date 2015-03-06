@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-# cython: profile=False
 # cython: boundscheck=False
 # cython: nonecheck=False
+# cython: wraparound=False
 # Copyright 2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -12,8 +12,9 @@ from __future__ import division, print_function
 from numbers import Number
 from cpython cimport array as c_array
 from array import array
-
-
+# somewhat ugly hack: attribute getters/setters use this special return value to indicate a python
+# exception; saves us from having to return objects while still allowing error handling
+DEF ERRORCODE = -987654321
 class GurobiError(Exception):
     pass
 
@@ -218,6 +219,11 @@ cdef class Var(VarOrConstr):
     def __mul__(self, other):
         return LinExpr(other, self)
 
+    # explicit getters for time-critical attributes (speedup avoiding __getattr__)
+    property X:
+        def __get__(self):
+            return self.model.getElementDblAttr('X', self.index)
+
     def __richcmp__(self, other, int op):
         if op == 2: # __eq__
             return TempConstr(LinExpr(self), GRB_EQUAL, LinExpr(other))
@@ -301,36 +307,59 @@ cdef class Model:
         cdef double dblValue
         cdef bytes lAttr = _chars(attr).lower()
         if lAttr in IntAttrsLower:
-            self.error = GRBgetintattr(self.model, lAttr, &intValue)
-            if self.error:
-                raise GurobiError('Error retrieving int attr {}: {}'.format(attr, self.error))
-            return intValue
+            return self.getIntAttr(attr)
         elif lAttr in DblAttrsLower:
-            self.error = GRBgetdblattr(self.model, lAttr, &dblValue)
-            if self.error:
-                raise GurobiError('Error retrieving dbl attr: {}'.format(self.error))
-            return dblValue
+            return self.getDblAttr(attr)
         elif attr[0] == '_':
             return self.attrs[attr]
         else:
             raise GurobiError('Unknown model attribute: {}'.format(attr))
 
+    cdef int getIntAttr(self, char *attr) except ERRORCODE:
+        cdef int value
+        self.error = GRBgetintattr(self.model, attr, &value)
+        if self.error:
+            raise GurobiError('Error retrieving int attribute: {}'.format(self.error))
+        return value
+
+    cdef double getDblAttr(self, char *attr) except ERRORCODE:
+        cdef double value
+        self.error = GRBgetdblattr(self.model, attr, &value)
+        if self.error:
+            raise GurobiError('Error retrieving double attribute: {}'.format(self.error))
+        return value
+
+    cdef double getElementDblAttr(self, char *attr, int element) except ERRORCODE:
+        """Very fast retrieval of int attributes. Only use when it is ensured that *attr* is a
+        valid attribute name!
+        """
+        cdef double value
+        self.error = GRBgetdblattrelement(self.model, attr, element, &value)
+        if self.error:
+            raise GurobiError('Error retrieving int element attr: {}'.format(self.error))
+        return value
 
     cdef getElementAttr(self, char *attr, int element):
         cdef int intValue
         cdef double dblValue
         cdef char *strValue
         cdef bytes lAttr = attr.lower()
+        if lAttr in DblAttrsLower:
+            self.error = GRBgetdblattrelement(self.model, lAttr, element, &dblValue)
+            if self.error:
+                raise GurobiError('Error retrieving dbl attr: {}'.format(self.error))
+            return dblValue
+        elif lAttr in IntAttrsLower:
+            self.error = GRBgetintattrelement(self.model, lAttr, element, &intValue)
+            if self.error:
+                raise GurobiError('Error retrieving int attr: {}'.format(self.error))
+            return intValue
         if lAttr in StrAttrsLower:
             self.error = GRBgetstrattrelement(self.model, lAttr, element, &strValue)
             if self.error:
                 raise GurobiError('Error retrieving str attr: {}'.format(self.error))
             return str(strValue)
-        elif lAttr in DblAttrsLower:
-            self.error = GRBgetdblattrelement(self.model, lAttr, element, &dblValue)
-            if self.error:
-                raise GurobiError('Error retrieving dbl attr: {}'.format(self.error))
-            return dblValue
+
         else:
             raise GurobiError("Unknown attribute '{}'".format(attr))
 
@@ -346,6 +375,16 @@ cdef class Model:
                 raise GurobiError('Error setting double attr: {}'.format(self.error))
         else:
             raise GurobiError('Unknonw attribute {}'.format(attr))
+
+    # explicit getters for time-critical attributes (speedup avoiding __getattr__)
+    property NumConstrs:
+        def __get__(self):
+            return self.getIntAttr(b'numconstrs')
+
+    property NumVars:
+        def __get__(self):
+            return self.getIntAttr(b'numvars')
+
 
     cpdef addVar(self, double lb=0, double ub=GRB_INFINITY, double obj=0.0,
                char vtype=GRB_CONTINUOUS, name=''):
@@ -413,7 +452,12 @@ cdef class Model:
         self.needUpdate = True
         return constr
 
-    cdef fastAddConstr(self, double[:] coeffs, list vars, char sense, double rhs, name=''):
+    cdef Constr fastAddConstr(self, double[::1] coeffs, list vars, char sense, double rhs, name=''):
+        """Efficiently add constraint circumventing LinExpr generation. *coeffs* and *vars* must
+        have the same size (this is not checked!).
+
+        Note: if there are duplicates in *vars*, an error will be thrown.
+        """
         cdef int[:] varInds = self._varInds
         cdef int i
         cdef Constr constr
@@ -422,6 +466,21 @@ cdef class Model:
             c_array.resize(self._varCoeffs, coeffs.size)
         for i in range(coeffs.size):
             varInds[i] = (<Var>vars[i]).index
+        self.error = GRBaddconstr(self.model, coeffs.size, &varInds[0],
+                                  &coeffs[0], sense, rhs, _chars(name))
+        if self.error:
+            raise GurobiError('Error adding constraint: {}'.format(self.error))
+        constr = Constr(self, -1)
+        self._constrsAddedSinceUpdate.append(constr)
+        self.needUpdate = True
+        return constr
+
+    cdef Constr fastAddConstr2(self, double[::1] coeffs, int[::1] varInds, char sense, double rhs, name=''):
+        """Even faster constraint adding given variable index array. You need to ensure that
+        *coeffs* and *varInds* have the same length, otherwise segfaults are likely to occur.
+        """
+        cdef int i
+        cdef Constr constr
         self.error = GRBaddconstr(self.model, coeffs.size, &varInds[0],
                                   &coeffs[0], sense, rhs, _chars(name))
         if self.error:
@@ -450,6 +509,16 @@ cdef class Model:
             self.error = GRBsetdblattr(self.model, b'ObjCon', expr.constant)
             if self.error:
                 raise GurobiError('Error setting objective constant: {}'.format(self.error))
+        self.needUpdate = True
+
+    cdef fastSetObjective(self, int start, int len, double[::1] coeffs):
+        """Efficient objective function manipulation: sets the coefficients of all variables with
+        indices in range(start, start+len) according to *coeffs*, which must at least be of the
+        correct length (NOT CHECKED!).
+        """
+        self.error = GRBsetdblattrarray(self.model, b'Obj', start, len, &coeffs[0])
+        if self.error:
+            raise GurobiError('Error setting objective function: {}'.format(self.error))
         self.needUpdate = True
 
     cpdef getVars(self):
@@ -483,32 +552,36 @@ cdef class Model:
         error = GRBupdatemodel(self.model)
         if error:
             raise GurobiError('Error updating the model: {}'.format(self.error))
-        for i in sorted(self._varsRemovedSinceUpdate, reverse=True):
-            voc = <Var>self._vars[i]
-            voc.index = -3
-            del self._vars[i]
-            for voc in self._vars[i:]:
-                voc.index -= 1
-            numVars -= 1
-        self._varsRemovedSinceUpdate = []
-        for i in sorted(self._constrsRemovedSinceUpdate, reverse=True):
-            voc = <Constr>self._constrs[i]
-            voc.index = -3
-            del self._constrs[i]
-            for voc in self._constrs[i:]:
-                voc.index -= 1
-            numConstrs -= 1
-        self._constrsRemovedSinceUpdate = []
-        for i in range(len(self._varsAddedSinceUpdate)):
-            voc = self._varsAddedSinceUpdate[i]
-            voc.index = numVars + i
-            self._vars.append(voc)
-        self._varsAddedSinceUpdate = []
-        for i in range(len(self._constrsAddedSinceUpdate)):
-            voc = self._constrsAddedSinceUpdate[i]
-            voc.index = numConstrs + i
-            self._constrs.append(voc)
-        self._constrsAddedSinceUpdate = []
+        if len(self._varsRemovedSinceUpdate):
+            for i in sorted(self._varsRemovedSinceUpdate, reverse=True):
+                voc = <Var>self._vars[i]
+                voc.index = -3
+                del self._vars[i]
+                for voc in self._vars[i:]:
+                    voc.index -= 1
+                numVars -= 1
+            self._varsRemovedSinceUpdate = []
+        if len(self._constrsRemovedSinceUpdate):
+            for i in sorted(self._constrsRemovedSinceUpdate, reverse=True):
+                voc = <Constr>self._constrs[i]
+                voc.index = -3
+                del self._constrs[i]
+                for voc in self._constrs[i:]:
+                    voc.index -= 1
+                numConstrs -= 1
+            self._constrsRemovedSinceUpdate = []
+        if len(self._varsAddedSinceUpdate):
+            for i in range(len(self._varsAddedSinceUpdate)):
+                voc = self._varsAddedSinceUpdate[i]
+                voc.index = numVars + i
+                self._vars.append(voc)
+            self._varsAddedSinceUpdate = []
+        if len(self._constrsAddedSinceUpdate):
+            for i in range(len(self._constrsAddedSinceUpdate)):
+                voc = self._constrsAddedSinceUpdate[i]
+                voc.index = numConstrs + i
+                self._constrs.append(voc)
+            self._constrsAddedSinceUpdate = []
         self.needUpdate = False
 
     cpdef optimize(self, callback=None):
