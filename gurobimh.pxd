@@ -22,9 +22,10 @@ cdef class LinExpr:
     cdef list vars
     cdef array.array coeffs
     cdef double constant
-    cdef LinExpr _copy(self)
+    cdef LinExpr copy(self)
     @staticmethod
     cdef int addInplace(LinExpr first, other) except -1
+    @staticmethod
     cdef int subtractInplace(LinExpr first, other) except -1
 
 
@@ -32,18 +33,18 @@ cdef class Model:
     cdef GRBmodel *model
     cdef int error
     cdef dict attrs  # user attributes
-    cdef list _vars, _varsAddedSinceUpdate, _varsRemovedSinceUpdate
-    cdef list _constrs,  _constrsAddedSinceUpdate, _constrsRemovedSinceUpdate
+    cdef list vars, varsAddedSinceUpdate, varsRemovedSinceUpdate
+    cdef list constrs,  constrsAddedSinceUpdate, constrsRemovedSinceUpdate
     cdef bint needUpdate
-    cdef array.array _varInds, _varCoeffs
-    cdef dict _leDct
+    cdef array.array varInds, varCoeffs
+    cdef dict linExpDct
     # callback handling
     cdef object callbackFn
     cdef void *cbData
     cdef int cbWhere
-    cdef bint _cbInterrupt
+    cdef bint cbInterrupt
     # internal helpers
-    cdef int _compressLinExpr(self, LinExpr expr) except -1
+    cdef int compressLinExpr(self, LinExpr expr) except -1
 
 
     # =======================

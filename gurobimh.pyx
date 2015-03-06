@@ -262,7 +262,7 @@ cdef int callbackFunction(GRBmodel *model, void *cbdata, int where, void *userda
     try:
         theModel.callbackFn(theModel, where)
     except KeyboardInterrupt:
-        theModel._cbInterrupt = True
+        theModel.cbInterrupt = True
         theModel.terminate()
     except Exception as e:
         return GRB_ERROR_CALLBACK
@@ -272,17 +272,17 @@ cdef class Model:
 
     def __init__(self, name='', _create=True):
         self.attrs = {}
-        self._vars = []
-        self._constrs = []
-        self._varsAddedSinceUpdate = []
-        self._varsRemovedSinceUpdate = []
-        self._constrsAddedSinceUpdate = []
-        self._constrsRemovedSinceUpdate = []
-        self._varInds = array('i', [0]*25)
-        self._varCoeffs = array('d', [0]*25)
+        self.vars = []
+        self.constrs = []
+        self.varsAddedSinceUpdate = []
+        self.varsRemovedSinceUpdate = []
+        self.constrsAddedSinceUpdate = []
+        self.constrsRemovedSinceUpdate = []
+        self.varInds = array('i', [0]*25)
+        self.varCoeffs = array('d', [0]*25)
         self.needUpdate = False
         self.callbackFn = None
-        self._leDct = {}
+        self.linExpDct = {}
         if _create:
             self.error = GRBnewmodel(masterEnv, &self.model, _chars(name),
                                      0, NULL, NULL, NULL, NULL, NULL)
@@ -416,7 +416,7 @@ cdef class Model:
         if self.error:
             raise GurobiError('Error creating variable: {}'.format(self.error))
         var = Var(self, -1)
-        self._varsAddedSinceUpdate.append(var)
+        self.varsAddedSinceUpdate.append(var)
         self.needUpdate = True
         return var
 
@@ -430,24 +430,24 @@ cdef class Model:
         cdef Var var
         cdef c_array.array[int] varInds
         cdef c_array.array[double] varCoeffs
-        self._leDct.clear()
+        self.linExpDct.clear()
         for i in range(expr.length):
             var = <Var>expr.vars[i]
             if var.index < 0:
                 raise GurobiError('Variable not in model')
-            if var.index in self._leDct:
-                self._leDct[var.index] += expr.coeffs.data.as_doubles[i]
+            if var.index in self.linExpDct:
+                self.linExpDct[var.index] += expr.coeffs.data.as_doubles[i]
             else:
-                self._leDct[var.index] = expr.coeffs.data.as_doubles[i]
-        lenDct = len(self._leDct)
-        if len(self._varInds) < lenDct:
-            c_array.resize(self._varInds, lenDct)
-            c_array.resize(self._varCoeffs, lenDct)
-        c_array.zero(self._varCoeffs)
-        varInds = self._varInds
-        varCoeffs = self._varCoeffs
+                self.linExpDct[var.index] = expr.coeffs.data.as_doubles[i]
+        lenDct = len(self.linExpDct)
+        if len(self.varInds) < lenDct:
+            c_array.resize(self.varInds, lenDct)
+            c_array.resize(self.varCoeffs, lenDct)
+        c_array.zero(self.varCoeffs)
+        varInds = self.varInds
+        varCoeffs = self.varCoeffs
 
-        for i, (j, coeff) in enumerate(self._leDct.items()):
+        for i, (j, coeff) in enumerate(self.linExpDct.items()):
             varInds[i] = j
             varCoeffs[i] = coeff
         return lenDct
@@ -462,14 +462,14 @@ cdef class Model:
         else:
             expr = LinExpr(lhs)
             LinExpr.subtractInplace(expr, rhs)
-        lenDct = self._compressLinExpr(expr)
-        self.error = GRBaddconstr(self.model, lenDct, self._varInds.data.as_ints,
-                                  self._varCoeffs.data.as_doubles, sense,
+        lenDct = self.compressLinExpr(expr)
+        self.error = GRBaddconstr(self.model, lenDct, self.varInds.data.as_ints,
+                                  self.varCoeffs.data.as_doubles, sense,
                                   -expr.constant, _chars(name))
         if self.error:
             raise GurobiError('Error adding constraint: {}'.format(self.error))
         constr = Constr(self, -1)
-        self._constrsAddedSinceUpdate.append(constr)
+        self.constrsAddedSinceUpdate.append(constr)
         self.needUpdate = True
         return constr
 
@@ -479,12 +479,12 @@ cdef class Model:
 
         Note: if there are duplicates in *vars*, an error will be thrown.
         """
-        cdef int[:] varInds = self._varInds
+        cdef int[:] varInds = self.varInds
         cdef int i
         cdef Constr constr
-        if len(self._varInds) < coeffs.size:
-            c_array.resize(self._varInds, coeffs.size)
-            c_array.resize(self._varCoeffs, coeffs.size)
+        if len(self.varInds) < coeffs.size:
+            c_array.resize(self.varInds, coeffs.size)
+            c_array.resize(self.varCoeffs, coeffs.size)
         for i in range(coeffs.size):
             varInds[i] = (<Var>vars[i]).index
         self.error = GRBaddconstr(self.model, coeffs.size, &varInds[0],
@@ -492,7 +492,7 @@ cdef class Model:
         if self.error:
             raise GurobiError('Error adding constraint: {}'.format(self.error))
         constr = Constr(self, -1)
-        self._constrsAddedSinceUpdate.append(constr)
+        self.constrsAddedSinceUpdate.append(constr)
         self.needUpdate = True
         return constr
 
@@ -507,7 +507,7 @@ cdef class Model:
         if self.error:
             raise GurobiError('Error adding constraint: {}'.format(self.error))
         constr = Constr(self, -1)
-        self._constrsAddedSinceUpdate.append(constr)
+        self.constrsAddedSinceUpdate.append(constr)
         self.needUpdate = True
         return constr
 
@@ -519,11 +519,11 @@ cdef class Model:
             self.error = GRBsetintattr(self.model, b'ModelSense', <int>sense)
             if self.error:
                 raise GurobiError('Error setting objective sense: {}'.format(self.error))
-        length = self._compressLinExpr(expr)
+        length = self.compressLinExpr(expr)
         for i in range(length):
             self.error = GRBsetdblattrelement(self.model, b'Obj',
-                                              self._varInds.data.as_ints[i],
-                                              self._varCoeffs.data.as_doubles[i])
+                                              self.varInds.data.as_ints[i],
+                                              self.varCoeffs.data.as_doubles[i])
             if self.error:
                 raise GurobiError('Error setting objective coefficient: {}'.format(self.error))
         if expr.constant != 0:
@@ -543,17 +543,17 @@ cdef class Model:
         self.needUpdate = True
 
     cpdef getVars(self):
-        return self._vars[:]
+        return self.vars[:]
 
     cpdef getConstrs(self):
-        return self._constrs[:]
+        return self.constrs[:]
 
     cpdef getConstrByName(self, name):
         cdef int numP
         self.error = GRBgetconstrbyname(self.model, _chars(name), &numP)
         if self.error:
             raise GurobiError('Error getting constraint: {}'.format(self.error))
-        return self._constrs[numP]
+        return self.constrs[numP]
 
     cpdef remove(self, VarOrConstr what):
         if what.model is not self:
@@ -563,12 +563,12 @@ cdef class Model:
                 self.error = GRBdelconstrs(self.model, 1, &what.index)
                 if self.error != 0:
                     raise GurobiError('Error removing constraint: {}'.format(self.error))
-                self._constrsRemovedSinceUpdate.append(what.index)
+                self.constrsRemovedSinceUpdate.append(what.index)
             else:
                 self.error = GRBdelvars(self.model, 1, &what.index)
                 if self.error:
                     raise GurobiError('Error removing variable: {}'.format(self.error))
-                self._varsRemovedSinceUpdate.append(what.index)
+                self.varsRemovedSinceUpdate.append(what.index)
             what.index = -2
             self.needUpdate = True
 
@@ -580,36 +580,36 @@ cdef class Model:
         error = GRBupdatemodel(self.model)
         if error:
             raise GurobiError('Error updating the model: {}'.format(self.error))
-        if len(self._varsRemovedSinceUpdate):
-            for i in sorted(self._varsRemovedSinceUpdate, reverse=True):
-                voc = <Var>self._vars[i]
+        if len(self.varsRemovedSinceUpdate):
+            for i in sorted(self.varsRemovedSinceUpdate, reverse=True):
+                voc = <Var>self.vars[i]
                 voc.index = -3
-                del self._vars[i]
-                for voc in self._vars[i:]:
+                del self.vars[i]
+                for voc in self.vars[i:]:
                     voc.index -= 1
                 numVars -= 1
-            self._varsRemovedSinceUpdate = []
-        if len(self._constrsRemovedSinceUpdate):
-            for i in sorted(self._constrsRemovedSinceUpdate, reverse=True):
-                voc = <Constr>self._constrs[i]
+            self.varsRemovedSinceUpdate = []
+        if len(self.constrsRemovedSinceUpdate):
+            for i in sorted(self.constrsRemovedSinceUpdate, reverse=True):
+                voc = <Constr>self.constrs[i]
                 voc.index = -3
-                del self._constrs[i]
-                for voc in self._constrs[i:]:
+                del self.constrs[i]
+                for voc in self.constrs[i:]:
                     voc.index -= 1
                 numConstrs -= 1
-            self._constrsRemovedSinceUpdate = []
-        if len(self._varsAddedSinceUpdate):
-            for i in range(len(self._varsAddedSinceUpdate)):
-                voc = self._varsAddedSinceUpdate[i]
+            self.constrsRemovedSinceUpdate = []
+        if len(self.varsAddedSinceUpdate):
+            for i in range(len(self.varsAddedSinceUpdate)):
+                voc = self.varsAddedSinceUpdate[i]
                 voc.index = numVars + i
-                self._vars.append(voc)
-            self._varsAddedSinceUpdate = []
-        if len(self._constrsAddedSinceUpdate):
-            for i in range(len(self._constrsAddedSinceUpdate)):
-                voc = self._constrsAddedSinceUpdate[i]
+                self.vars.append(voc)
+            self.varsAddedSinceUpdate = []
+        if len(self.constrsAddedSinceUpdate):
+            for i in range(len(self.constrsAddedSinceUpdate)):
+                voc = self.constrsAddedSinceUpdate[i]
                 voc.index = numConstrs + i
-                self._constrs.append(voc)
-            self._constrsAddedSinceUpdate = []
+                self.constrs.append(voc)
+            self.constrsAddedSinceUpdate = []
         self.needUpdate = False
 
     cpdef optimize(self, callback=None):
@@ -618,7 +618,7 @@ cdef class Model:
             if self.error:
                 raise GurobiError('Error installing callback: {}'.format(self.error))
             self.callbackFn = callback
-            self._cbInterrupt = False
+            self.cbInterrupt = False
         self.update()
         self.error = GRBoptimize(self.model)
         if self.error:
@@ -628,7 +628,7 @@ cdef class Model:
             self.error = GRBsetcallbackfunc(self.model, NULL, NULL)
             if self.error:
                 raise GurobiError('Error unsetting callback: {}'.format(self.error))
-        if self._cbInterrupt:
+        if self.cbInterrupt:
             raise KeyboardInterrupt()
 
     cpdef cbGet(self, int what):
@@ -744,7 +744,7 @@ cdef class LinExpr:
         else:
             first.constant -= <double>other
 
-    cdef LinExpr _copy(LinExpr self):
+    cdef LinExpr copy(LinExpr self):
         cdef LinExpr result = LinExpr(self.constant)
         result.vars = self.vars[:]
         result.coeffs = c_array.copy(self.coeffs)
@@ -752,12 +752,12 @@ cdef class LinExpr:
         return result
 
     def __add__(LinExpr self, other):
-        cdef LinExpr result = self._copy()
+        cdef LinExpr result = self.copy()
         LinExpr.addInplace(result, other)
         return result
 
     def __sub__(LinExpr self, other):
-        cdef LinExpr result = self._copy()
+        cdef LinExpr result = self.copy()
         LinExpr.subtractInplace(result, other)
         return result
 
