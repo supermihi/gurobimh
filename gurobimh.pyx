@@ -2,6 +2,7 @@
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: wraparound=False
+# cython: initializedcheck=False
 # Copyright 2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
@@ -222,7 +223,7 @@ cdef class Var(VarOrConstr):
     # explicit getters for time-critical attributes (speedup avoiding __getattr__)
     property X:
         def __get__(self):
-            return self.model.getElementDblAttr('X', self.index)
+            return self.model.getElementDblAttr(b'X', self.index)
 
     def __richcmp__(self, other, int op):
         if op == 2: # __eq__
@@ -235,7 +236,10 @@ cdef class Var(VarOrConstr):
 
 
 cdef class Constr(VarOrConstr):
-    pass
+    # explicit getters for time-critical attributes (speedup avoiding __getattr__)
+    property Slack:
+        def __get__(self):
+            return self.model.getElementDblAttr(b'Slack', self.index)
 
 
 
@@ -262,7 +266,6 @@ cdef int callbackFunction(GRBmodel *model, void *cbdata, int where, void *userda
 cdef class Model:
 
     def __init__(self, name='', _create=True):
-
         self.attrs = {}
         self._vars = []
         self._constrs = []
@@ -310,7 +313,7 @@ cdef class Model:
             return self.getIntAttr(attr)
         elif lAttr in DblAttrsLower:
             return self.getDblAttr(attr)
-        elif attr[0] == '_':
+        elif attr[0] == b'_':
             return self.attrs[attr]
         else:
             raise GurobiError('Unknown model attribute: {}'.format(attr))
@@ -330,14 +333,18 @@ cdef class Model:
         return value
 
     cdef double getElementDblAttr(self, char *attr, int element) except ERRORCODE:
-        """Very fast retrieval of int attributes. Only use when it is ensured that *attr* is a
-        valid attribute name!
-        """
+        """Fast retrieval of double attributes."""
         cdef double value
         self.error = GRBgetdblattrelement(self.model, attr, element, &value)
         if self.error:
             raise GurobiError('Error retrieving int element attr: {}'.format(self.error))
         return value
+
+    cdef int setElementDblAttr(self, char *attr, int element, double value) except -1:
+        """Fast setting of double attributes."""
+        self.error = GRBsetdblattrelement(self.model, attr, element, value)
+        if self.error:
+            raise GurobiError('Error retrieving int element attr: {}'.format(self.error))
 
     cdef getElementAttr(self, char *attr, int element):
         cdef int intValue
@@ -385,6 +392,15 @@ cdef class Model:
         def __get__(self):
             return self.getIntAttr(b'numvars')
 
+    property Status:
+        def __get__(self):
+            return self.getIntAttr(b'status')
+
+
+    cdef int fastGetX(self, int start, int length, double[::1] values) except -1:
+        self.error = GRBgetdblattrarray(self.model, b'X', start, length, &values[0])
+        if self.error:
+            raise GurobiError('Error getting X: {}'.format(self.error))
 
     cpdef addVar(self, double lb=0, double ub=GRB_INFINITY, double obj=0.0,
                char vtype=GRB_CONTINUOUS, name=''):
@@ -511,12 +527,12 @@ cdef class Model:
                 raise GurobiError('Error setting objective constant: {}'.format(self.error))
         self.needUpdate = True
 
-    cdef fastSetObjective(self, int start, int len, double[::1] coeffs):
+    cdef fastSetObjective(self, int start, int length, double[::1] coeffs):
         """Efficient objective function manipulation: sets the coefficients of all variables with
-        indices in range(start, start+len) according to *coeffs*, which must at least be of the
+        indices in range(start, start+length) according to *coeffs*, which must at least be of the
         correct length (NOT CHECKED!).
         """
-        self.error = GRBsetdblattrarray(self.model, b'Obj', start, len, &coeffs[0])
+        self.error = GRBsetdblattrarray(self.model, b'Obj', start, length, &coeffs[0])
         if self.error:
             raise GurobiError('Error setting objective function: {}'.format(self.error))
         self.needUpdate = True
@@ -526,6 +542,13 @@ cdef class Model:
 
     cpdef getConstrs(self):
         return self._constrs[:]
+
+    cpdef getConstrByName(self, name):
+        cdef int numP
+        self.error = GRBgetconstrbyname(self.model, _chars(name), &numP)
+        if self.error:
+            raise GurobiError('Error getting constraint: {}'.format(self.error))
+        return self._constrs[numP]
 
     cpdef remove(self, VarOrConstr what):
         if what.model is not self:
@@ -592,9 +615,13 @@ cdef class Model:
             self.callbackFn = callback
         self.update()
         self.error = GRBoptimize(self.model)
-        self.callbackFn = None
         if self.error:
             raise GurobiError('Error optimizing model: {}'.format(self.error))
+        if callback is not None:
+            self.callbackFn = None
+            self.error = GRBsetcallbackfunc(self.model, NULL, NULL)
+            if self.error:
+                raise GurobiError('Error unsetting callback: {}'.format(self.error))
 
     cpdef cbGet(self, int what):
         cdef int intResult

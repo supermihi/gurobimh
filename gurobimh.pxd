@@ -54,8 +54,10 @@ cdef class Model:
     cdef int getIntAttr(self, char *attr) except ERRORCODE
     cdef double getDblAttr(self, char *attr) except ERRORCODE
     cdef double getElementDblAttr(self, char *attr, int element) except ERRORCODE
+    cdef int setElementDblAttr(self, char *attr, int element, double value) except -1
     cdef int setElementAttr(self, char* key, int element, value) except -1
-    # other
+    cdef int fastGetX(self, int start, int length, double[::1] values) except -1
+    # model modification
     cdef fastSetObjective(self, int start, int len, double[::1] coeffs)
     cdef Constr fastAddConstr(self, double[::1] coeffs, list vars, char sense, double rhs, name=?)
     cdef Constr fastAddConstr2(self, double[::1] coeffs, int[::1] varIndices, char sense, double rhs, name=?)
@@ -69,6 +71,7 @@ cdef class Model:
     cpdef terminate(self)
     cpdef getVars(self)
     cpdef getConstrs(self)
+    cpdef getConstrByName(self, name)
     cpdef remove(self, VarOrConstr what)
     cpdef update(self)
     cpdef optimize(self, callback=?)
@@ -123,6 +126,7 @@ cdef extern from 'gurobi_c.h':
     int GRBupdatemodel (GRBmodel *)
     int GRBaddconstr (GRBmodel *, int numnz, int *cind, double *cval, char sense, double rhs, const char *constrname)
     int GRBdelconstrs (GRBmodel *, int numdel, int *ind)
+    int GRBgetconstrbyname (GRBmodel *, const char *name, int *constrnumP)
     int GRBchgcoeffs (GRBmodel *, int numchgs, int *cind, int *vind, double *val)
     int GRBdelvars (GRBmodel *, int numdel, int *ind)
     int GRBoptimize (GRBmodel *)
