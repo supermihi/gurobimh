@@ -38,9 +38,9 @@ def read(fname):
     model = Model(_create=False)
     model.model = cModel
     for i in range(model.NumVars):
-        model._vars.append(Var(model, i))
+        model.vars.append(Var(model, i))
     for i in range(model.NumConstrs):
-        model._constrs.append(Constr(model, i))
+        model.constrs.append(Constr(model, i))
     return model
 
 
@@ -420,7 +420,7 @@ cdef class Model:
         self.needUpdate = True
         return var
 
-    cdef int _compressLinExpr(self, LinExpr expr) except -1:
+    cdef int compressLinExpr(self, LinExpr expr) except -1:
         """Compresses linear expressions by adding up coefficients of variables appearing more than
         once. The resulting compressed expression is stored in self.varInds / self.varCoeffs.
         :returns: Length of compressed expression
