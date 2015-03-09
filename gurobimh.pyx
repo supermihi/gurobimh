@@ -3,13 +3,13 @@
 # cython: nonecheck=False
 # cython: wraparound=False
 # cython: initializedcheck=False
+# cython: language_level = 3
 # Copyright 2015 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
 # published by the Free Software Foundation
 
-from __future__ import division, print_function
 from numbers import Number
 from cpython cimport array as c_array
 from array import array
@@ -73,29 +73,29 @@ cdef class CallbackClass:
 # === ATTRIBUTES AND PARAMETERS ===
 #
 # model attrs
-cdef list IntAttrs = [b'NumConstrs', b'NumVars', b'ModelSense']
-cdef list StrAttrs = [b'ModelName']
-cdef list DblAttrs = [b'ObjCon']
+cdef list IntAttrs = ['NumConstrs', 'NumVars', 'ModelSense']
+cdef list StrAttrs = ['ModelName']
+cdef list DblAttrs = ['ObjCon']
 cdef list CharAttrs = []
 # var attrs
-StrAttrs += [b'VarName']
-DblAttrs += [b'LB', b'UB', b'Obj', b'Start']
+StrAttrs += ['VarName']
+DblAttrs += ['LB', 'UB', 'Obj', 'Start']
 # constraint attrs
-DblAttrs += [b'RHS']
-StrAttrs += [b'ConstrName']
-CharAttrs += [b'Sense']
+DblAttrs += ['RHS']
+StrAttrs += ['ConstrName']
+CharAttrs += ['Sense']
 # solution attrs
-IntAttrs += [b'Status']
-DblAttrs += [b'ObjVal', b'MIPGap', b'IterCount', b'NodeCount']
+IntAttrs += ['Status']
+DblAttrs += ['ObjVal', 'MIPGap', 'IterCount', 'NodeCount']
 # var attrs for current solution
-DblAttrs += [b'X']
+DblAttrs += ['X']
 # constr attr for current solution
-DblAttrs += [b'Pi', b'Slack']
+DblAttrs += ['Pi', 'Slack']
 
-cdef set IntAttrsLower  = set(a.lower() for a in IntAttrs)
-cdef set DblAttrsLower  = set(a.lower() for a in DblAttrs)
-cdef set StrAttrsLower  = set(a.lower() for a in StrAttrs)
-cdef set CharAttrsLower = set(a.lower() for a in CharAttrs)
+cdef set IntAttrsLower  = set(a.lower().encode('ascii') for a in IntAttrs)
+cdef set DblAttrsLower  = set(a.lower().encode('ascii') for a in DblAttrs)
+cdef set StrAttrsLower  = set(a.lower().encode('ascii') for a in StrAttrs)
+cdef set CharAttrsLower = set(a.lower().encode('ascii') for a in CharAttrs)
 
 class AttrConstClass:
     """Singleton class for attribute name constants"""
@@ -103,25 +103,25 @@ for attr in IntAttrs + StrAttrs + DblAttrs + CharAttrs:
     setattr(AttrConstClass, attr, attr)
 
 # termination
-cdef list IntParams = [b'CutOff', b'TimeLimit']
+cdef list IntParams = ['CutOff', 'TimeLimit']
 cdef list DblParams = []
 cdef list StrParams = []
 # tolerances
-DblParams += [b'FeasibilityTol', b'IntFeasTol', b'MIPGap', b'MIPGapAbs', b'OptimalityTol']
+DblParams += ['FeasibilityTol', 'IntFeasTol', 'MIPGap', 'MIPGapAbs', 'OptimalityTol']
 # simplex
-IntParams += [b'Method']
+IntParams += ['Method']
 # MIP
-IntParams += [b'MIPFocus']
+IntParams += ['MIPFocus']
 # cuts
-IntParams += [b'CutPasses']
+IntParams += ['CutPasses']
 # other
-IntParams += [b'OutputFlag', b'PrePasses', b'Presolve', b'Threads']
-StrParams += [b'LogFile']
-DblParams += [b'TuneTimeLimit']
+IntParams += ['OutputFlag', 'PrePasses', 'Presolve', 'Threads']
+StrParams += ['LogFile']
+DblParams += ['TuneTimeLimit']
 
-cdef set IntParamsLower = set(a.lower() for a in IntParams)
-cdef set DblParamsLower = set(a.lower() for a in DblParams)
-cdef set StrParamsLower = set(a.lower() for a in StrParams)
+cdef set IntParamsLower = set(a.lower().encode('ascii') for a in IntParams)
+cdef set DblParamsLower = set(a.lower().encode('ascii') for a in DblParams)
+cdef set StrParamsLower = set(a.lower().encode('ascii') for a in StrParams)
 
 
 class ParamConstClass:
@@ -278,8 +278,8 @@ cdef class Model:
         self.varsRemovedSinceUpdate = []
         self.constrsAddedSinceUpdate = []
         self.constrsRemovedSinceUpdate = []
-        self.varInds = array('i', [0]*25)
-        self.varCoeffs = array('d', [0]*25)
+        self.varInds = array(b'i', [0]*25)
+        self.varCoeffs = array(b'd', [0]*25)
         self.needUpdate = False
         self.callbackFn = None
         self.linExpDct = {}
@@ -294,6 +294,8 @@ cdef class Model:
         if isinstance(param, unicode):
             param = (<unicode>param).encode('utf8')
         lParam = param.lower()
+        print(param, lParam)
+        print(IntParamsLower)
         if lParam in DblParamsLower:
             self.error = GRBsetdblparam(GRBgetenv(self.model), lParam, <double>value)
         elif lParam in IntParamsLower:
@@ -315,10 +317,10 @@ cdef class Model:
         cdef double dblValue
         cdef bytes lAttr = _chars(attr).lower()
         if lAttr in IntAttrsLower:
-            return self.getIntAttr(attr)
+            return self.getIntAttr(lAttr)
         elif lAttr in DblAttrsLower:
-            return self.getDblAttr(attr)
-        elif attr[0] == b'_':
+            return self.getDblAttr(lAttr)
+        elif attr[0] == '_':
             return self.attrs[attr]
         else:
             raise GurobiError('Unknown model attribute: {}'.format(attr))
@@ -500,7 +502,6 @@ cdef class Model:
         """Even faster constraint adding given variable index array. You need to ensure that
         *coeffs* and *varInds* have the same length, otherwise segfaults are likely to occur.
         """
-        cdef int i
         cdef Constr constr
         self.error = GRBaddconstr(self.model, coeffs.size, &varInds[0],
                                   &coeffs[0], sense, rhs, _chars(name))
@@ -664,7 +665,7 @@ cdef class Model:
         GRBfreemodel(self.model)
 
 
-cdef c_array.array dblOne = array('d', [1])
+cdef c_array.array dblOne = array(b'd', [1])
 
 
 cdef class LinExpr:
