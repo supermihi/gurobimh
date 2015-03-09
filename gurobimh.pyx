@@ -294,8 +294,6 @@ cdef class Model:
         if isinstance(param, unicode):
             param = (<unicode>param).encode('utf8')
         lParam = param.lower()
-        print(param, lParam)
-        print(IntParamsLower)
         if lParam in DblParamsLower:
             self.error = GRBsetdblparam(GRBgetenv(self.model), lParam, <double>value)
         elif lParam in IntParamsLower:
