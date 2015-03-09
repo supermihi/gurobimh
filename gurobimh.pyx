@@ -13,12 +13,15 @@
 from numbers import Number
 from cpython cimport array as c_array
 from array import array
+import sys
 # somewhat ugly hack: attribute getters/setters use this special return value to indicate a python
 # exception; saves us from having to return objects while still allowing error handling
 DEF ERRORCODE = -987654321
 class GurobiError(Exception):
     pass
 
+__arrayCodeInt = b'i' if sys.version_info.major == 2 else 'i'
+__arrayCodeDbl = b'd' if sys.version_info.major == 2 else 'd'
 
 #  we create one master environment used in all models
 cdef GRBenv *masterEnv = NULL
@@ -278,8 +281,8 @@ cdef class Model:
         self.varsRemovedSinceUpdate = []
         self.constrsAddedSinceUpdate = []
         self.constrsRemovedSinceUpdate = []
-        self.varInds = array(b'i', [0]*25)
-        self.varCoeffs = array(b'd', [0]*25)
+        self.varInds = array(__arrayCodeInt, [0]*25)
+        self.varCoeffs = array(__arrayCodeDbl, [0]*25)
         self.needUpdate = False
         self.callbackFn = None
         self.linExpDct = {}
@@ -663,7 +666,7 @@ cdef class Model:
         GRBfreemodel(self.model)
 
 
-cdef c_array.array dblOne = array(b'd', [1])
+cdef c_array.array dblOne = array(__arrayCodeDbl, [1])
 
 
 cdef class LinExpr:
