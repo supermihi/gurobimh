@@ -17,11 +17,16 @@ import sys
 # somewhat ugly hack: attribute getters/setters use this special return value to indicate a python
 # exception; saves us from having to return objects while still allowing error handling
 DEF ERRORCODE = -987654321
+
+
+__arrayCodeInt = b'i' if sys.version_info.major == 2 else 'i'  # workaround bytes/unicode issues
+__arrayCodeDbl = b'd' if sys.version_info.major == 2 else 'd'  # in Py2/3
+
+
 class GurobiError(Exception):
+    """General exception class used by this library."""
     pass
 
-__arrayCodeInt = b'i' if sys.version_info.major == 2 else 'i'
-__arrayCodeDbl = b'd' if sys.version_info.major == 2 else 'd'
 
 #  we create one master environment used in all models
 cdef GRBenv *masterEnv = NULL
@@ -57,13 +62,14 @@ cpdef quicksum(iterable):
     return result
 
 
-cdef dict CallbackTypes = {}
+cdef dict CallbackTypes = {}  # maps callback "what" constant to return type of Model.cbGet()
 
 cdef class CallbackClass:
     """Singleton class for callback constants"""
     cdef:
         readonly int MIPNODE
         readonly int MIPNODE_OBJBST
+        #TODO: insert missing callback WHATs
 
     def __init__(self):
         self.MIPNODE = GRB_CB_MIPNODE
@@ -76,6 +82,7 @@ cdef class CallbackClass:
 # === ATTRIBUTES AND PARAMETERS ===
 #
 # model attrs
+#TODO: insert missing attributes and parameters
 cdef list IntAttrs = ['NumConstrs', 'NumVars', 'ModelSense']
 cdef list StrAttrs = ['ModelName']
 cdef list DblAttrs = ['ObjCon']
@@ -129,8 +136,11 @@ cdef set StrParamsLower = set(a.lower().encode('ascii') for a in StrParams)
 
 class ParamConstClass:
     """Singleton class for parameter name constants"""
+    pass
+
 for param in IntParams + StrParams + DblParams:
     setattr(ParamConstClass, attr, attr)
+
 
 cdef class GRBcls:
     """Dummy class emulating gurobipy.GRB"""
@@ -170,15 +180,14 @@ cdef class GRBcls:
 GRB = GRBcls()
 
 
-class Gurobicls:
+cdef class gurobi:
     """Emulate gurobipy.gorubi."""
-    def version(self):
+    @staticmethod
+    def version():
         cdef int major, minor, tech
         GRBversion(&major, &minor, &tech)
         return major, minor, tech
 
-
-gurobi = Gurobicls()
 
 
 cdef class VarOrConstr:
