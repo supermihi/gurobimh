@@ -16,9 +16,9 @@ Overview
   
 Of course, there are also disatvantages:
 * Up to now, `gurobimh` supports only a subset of the official `gurobipy` API, in particular
-  quadratic programming is not yet supported. However these features are easy to implement once you 
-  look at how the others are, so you are welcome to contribute. I simply do not use these features
-  so I did not bother implementing them.
+  quadratic programming is not yet supported, and lots of parameters are missing. However these
+  features are easy to implement once you look at how the others are, so you are welcome to
+  contribute. Simply put, I have only implemented the features I am using myself.
 * Though I have successfully verified that `gurobimh` behaves like `gurobipy` for my programs,
   there are probably lots of bugs, and of course there's no commercial support.
 

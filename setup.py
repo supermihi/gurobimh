@@ -47,7 +47,7 @@ def readme():
 
 setup(
     name='gurobimh',
-    version='0.3',
+    version='0.1',
     classifiers=[
       'Development Status :: 3 - Alpha',
       'Intended Audience :: Science/Research',
