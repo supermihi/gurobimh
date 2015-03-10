@@ -37,6 +37,14 @@ extensions[0].library_dirs = [join(GHOME, 'lib')]
 extensions[0].libraries = ['gurobi60']
 
 
+def readme():
+    readmeFile = os.path.join(os.path.dirname(__file__), 'README.md')
+    if sys.version_info[0] >= 3:
+        return open(readmeFile, 'rt', encoding='utf8').read()
+    else:
+        import io
+        return io.open(readmeFile, 'rt', encoding='utf8').read()
+
 setup(
     name='gurobimh',
     version='0.3',
@@ -49,6 +57,8 @@ setup(
       'Programming Language :: Python :: 3',
       'Topic :: Scientific/Engineering :: Mathematics',
     ],
+    description='alternative python interface for the Gurobi optimization software',
+    long_description=readme(),
     author='Michael Helmling',
     author_email='helmling@uni-koblenz.de',
     license='GPL3',
