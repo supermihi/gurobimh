@@ -48,6 +48,7 @@ def readme():
 setup(
     name='gurobimh',
     version='0.1',
+    url='https://github.com/supermihi/gurobimh',
     classifiers=[
       'Development Status :: 3 - Alpha',
       'Intended Audience :: Science/Research',
