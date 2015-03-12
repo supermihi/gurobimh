@@ -95,10 +95,12 @@ cdef extern from 'gurobi_c.h':
     const int GRB_MAXIMIZE, GRB_MINIMIZE, GRB_INFEASIBLE, GRB_OPTIMAL, GRB_INTERRUPTED, \
         GRB_INF_OR_UNBD, GRB_UNBOUNDED
     const double GRB_INFINITY
+    # callback "where"'s
     const int GRB_CB_POLLING, GRB_CB_PRESOLVE, GRB_CB_SIMPLEX, GRB_CB_MIP, GRB_CB_MIPSOL, \
         GRB_CB_MIPNODE, GRB_CB_MESSAGE, GRB_CB_BARRIER
-    # callback codes
+    # callback "what"'s
     const int GRB_CB_MIPNODE_OBJBST
+    const int GRB_CB_SPX_OBJVAL
 
     const int GRB_ERROR_CALLBACK
 

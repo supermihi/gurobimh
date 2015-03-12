@@ -68,14 +68,20 @@ cdef class CallbackClass:
     """Singleton class for callback constants"""
     cdef:
         readonly int MIPNODE
+        readonly int SIMPLEX
+
         readonly int MIPNODE_OBJBST
+        readonly int SPX_OBJVAL
         #TODO: insert missing callback WHATs
 
     def __init__(self):
         self.MIPNODE = GRB_CB_MIPNODE
+        self.SIMPLEX = GRB_CB_SIMPLEX
+
         self.MIPNODE_OBJBST = GRB_CB_MIPNODE_OBJBST
-        CallbackTypes[self.MIPNODE] = int
+        self.SPX_OBJVAL = GRB_CB_SPX_OBJVAL
         CallbackTypes[self.MIPNODE_OBJBST] = float
+        CallbackTypes[self.SPX_OBJVAL] = float
 
 
 
@@ -681,6 +687,19 @@ cdef c_array.array dblOne = array(__arrayCodeDbl, [1])
 cdef class LinExpr:
 
     def __init__(self, arg1=0.0, arg2=None):
+        """Variants for calling this constructor:
+
+        Single argument:
+        ----------------
+          - single variable
+          - single number
+          - existing LinExpr object (will be copied)
+          - list of (coeff, var) pairs
+        Two arguments:
+        --------------
+          - var, coeff
+          - list of coeffs, list of vars
+        """
         cdef int i
         if arg2 is None:
             if isinstance(arg1, Var):
