@@ -58,7 +58,7 @@ cpdef quicksum(iterable):
     Var or LinExpr objects."""
     cdef LinExpr result = LinExpr()
     for element in iterable:
-        result += element
+        LinExpr.addInplace(result, element)
     return result
 
 
