@@ -91,9 +91,11 @@ cdef extern from 'gurobi_c.h':
         pass
     const char GRB_BINARY, GRB_CONTINUOUS, GRB_INTEGER
     const char GRB_EQUAL, GRB_LESS_EQUAL, GRB_GREATER_EQUAL
-
-    const int GRB_MAXIMIZE, GRB_MINIMIZE, GRB_INFEASIBLE, GRB_OPTIMAL, GRB_INTERRUPTED, \
-        GRB_INF_OR_UNBD, GRB_UNBOUNDED
+    # objective sense
+    const int GRB_MAXIMIZE, GRB_MINIMIZE
+    # status codes
+    const int GRB_INFEASIBLE, GRB_OPTIMAL, GRB_INTERRUPTED, GRB_ITERATION_LIMIT, GRB_INF_OR_UNBD,\
+        GRB_UNBOUNDED
     const double GRB_INFINITY
     # callback "where"'s
     const int GRB_CB_POLLING, GRB_CB_PRESOLVE, GRB_CB_SIMPLEX, GRB_CB_MIP, GRB_CB_MIPSOL, \

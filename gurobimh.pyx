@@ -119,8 +119,8 @@ for attr in IntAttrs + StrAttrs + DblAttrs + CharAttrs:
     setattr(AttrConstClass, attr, attr)
 
 # termination
-cdef list IntParams = ['CutOff', 'TimeLimit']
-cdef list DblParams = []
+cdef list IntParams = []
+cdef list DblParams = ['Cutoff', 'IterationLimit', 'TimeLimit']
 cdef list StrParams = []
 # tolerances
 DblParams += ['FeasibilityTol', 'IntFeasTol', 'MIPGap', 'MIPGapAbs', 'OptimalityTol']
@@ -157,7 +157,7 @@ cdef class GRBcls:
         readonly char INTEGER
         readonly int MAXIMIZE, MINIMIZE
         # status codes
-        readonly int INFEASIBLE, OPTIMAL, INTERRUPTED, INF_OR_UNBD, UNBOUNDED
+        readonly int INFEASIBLE, OPTIMAL, INTERRUPTED, INF_OR_UNBD, UNBOUNDED, ITERATION_LIMIT
         readonly char LESS_EQUAL, EQUAL, GREATER_EQUAL
         readonly object Callback, callback, Param, param, Attr, attr
     # workaround: INFINITY class member clashes with gcc macro INFINITY
@@ -169,16 +169,21 @@ cdef class GRBcls:
         self.BINARY = GRB_BINARY
         self.CONTINUOUS = GRB_CONTINUOUS
         self.INTEGER = GRB_INTEGER
+
+        self.MAXIMIZE = GRB_MAXIMIZE
+        self.MINIMIZE = GRB_MINIMIZE
+
         self.INFEASIBLE = GRB_INFEASIBLE
         self.OPTIMAL = GRB_OPTIMAL
         self.INTERRUPTED = GRB_INTERRUPTED
         self.INF_OR_UNBD = GRB_INF_OR_UNBD
         self.UNBOUNDED = GRB_UNBOUNDED
+        self.ITERATION_LIMIT = GRB_ITERATION_LIMIT
+
         self.LESS_EQUAL = GRB_LESS_EQUAL
         self.EQUAL = GRB_EQUAL
         self.GREATER_EQUAL = GRB_GREATER_EQUAL
-        self.MAXIMIZE = GRB_MAXIMIZE
-        self.MINIMIZE = GRB_MINIMIZE
+
         self.callback = self.Callback = CallbackClass()
         self.Param = self.param = ParamConstClass
         self.Attr = self.attr = AttrConstClass
