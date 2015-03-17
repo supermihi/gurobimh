@@ -6,13 +6,15 @@ Overview
 `gurobimh` is a drop-in replacement for the `gurobipy` API bindings shipped with
 [Gurobi](www.gurobi.com). It offers several advantages:
 
-* `gurobimh` can be compiled for all current versions of Python (in particular, Python 3.4); you do not need
+* `gurobimh` can be compiled for all current versions of Python; you do not need
   to rely on Gurobi officially supporting your desired Python version.
 * `gurobimh`'s performance is much better, especially when modifying models a lot (like in a hand-written
   branch and bound solver).
 * `gurobimh` is free software an can be easily extended.
-* `gurobimh` ships Cython `pxd` file which allows you to write statically typed Cython programs
-  for virtally C performance.
+* `gurobimh` ships a Cython `pxd` files, and the `Model` class has some fast-access `cdef` member
+  methods for model modifications or queries than circumvent some of the slower API parts. This
+  means that, if you are writing your algorithms in Cython, you can almost achieve the performance
+  of the C interface, but using a much cleaner API.
   
 Of course, there are also disatvantages:
 * Up to now, `gurobimh` supports only a subset of the official `gurobipy` API, in particular
@@ -20,7 +22,8 @@ Of course, there are also disatvantages:
   features are easy to implement once you look at how the others are, so you are welcome to
   contribute. Simply put, I have only implemented the features I am using myself.
 * Though I have successfully verified that `gurobimh` behaves like `gurobipy` for my programs,
-  there are probably lots of bugs, and of course there's no commercial support.
+  there are probably lots of bugs, and of course there's no commercial support. Don't use in
+  productive environments!
 
 Requirements
 ------------
@@ -30,13 +33,17 @@ set correctly.
 
 Installation
 ------------
+Install directly from the [Python Package Index](www.pypi.org) with
 
-Download the package and type:
+    pip install gurobimh
+    
+Alternatively, download the package and type:
 
-    python setup.py install --user
+    python setup.py install
 
 
-In both commands, replace ``python`` by an appropriate call to your Python interpreter.
+Both commands can be appended by the `--user` option which locally installs `gurobimh` for the
+current user without needing root privileges.
 
 
 Usage

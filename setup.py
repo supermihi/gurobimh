@@ -11,7 +11,7 @@ import sys
 import os
 from os.path import dirname, abspath, join
 from setuptools import setup
-
+from Cython.Build import cythonize
 
 here = abspath(dirname(__file__))
 try:
@@ -19,18 +19,10 @@ try:
 except KeyError:
     raise RuntimeError('GUROBI_HOME not set')
 
-# if '--cython' in sys.argv:
-#     from Cython.Build import cythonize
-#     extensions = cythonize(['gurobimh.pyx'])
-#     sys.argv.remove('--cython')
-# else:
-#     from distutils.extension import Extension
-#     extensions = [Extension('gurobimh', ['gurobimh.c'],)]
-from Cython.Build import cythonize
 directives = {}
 if '--profile' in sys.argv:
-        directives['profile'] = True
-        sys.argv.remove('--profile')
+    directives['profile'] = True
+    sys.argv.remove('--profile')
 extensions = cythonize(['gurobimh.pyx'], compiler_directives=directives)
 extensions[0].include_dirs = [join(GHOME, 'include')]
 extensions[0].library_dirs = [join(GHOME, 'lib')]
@@ -47,7 +39,7 @@ def readme():
 
 setup(
     name='gurobimh',
-    version='0.3',
+    version='0.4',
     url='https://github.com/supermihi/gurobimh',
     classifiers=[
       'Development Status :: 3 - Alpha',
