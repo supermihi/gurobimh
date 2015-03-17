@@ -1,2 +1,3 @@
 include gurobimh.pyx
 include gurobimh.pxd
+include README.md
