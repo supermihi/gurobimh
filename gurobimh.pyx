@@ -159,13 +159,14 @@ cdef class GRBcls:
         # status codes
         readonly int INFEASIBLE, OPTIMAL, INTERRUPTED, INF_OR_UNBD, UNBOUNDED, ITERATION_LIMIT
         readonly char LESS_EQUAL, EQUAL, GREATER_EQUAL
-        readonly object Callback, callback, Param, param, Attr, attr
+        readonly object Callback, callback, Param, param, Attr, attr, status
     # workaround: INFINITY class member clashes with gcc macro INFINITY
     property INFINITY:
         def __get__(self):
             return GRB_INFINITY
 
     def __init__(self):
+        self.status = type('StatusConstClass', (), {})
         self.BINARY = GRB_BINARY
         self.CONTINUOUS = GRB_CONTINUOUS
         self.INTEGER = GRB_INTEGER
@@ -173,12 +174,12 @@ cdef class GRBcls:
         self.MAXIMIZE = GRB_MAXIMIZE
         self.MINIMIZE = GRB_MINIMIZE
 
-        self.INFEASIBLE = GRB_INFEASIBLE
-        self.OPTIMAL = GRB_OPTIMAL
-        self.INTERRUPTED = GRB_INTERRUPTED
-        self.INF_OR_UNBD = GRB_INF_OR_UNBD
-        self.UNBOUNDED = GRB_UNBOUNDED
-        self.ITERATION_LIMIT = GRB_ITERATION_LIMIT
+        self.status.INFEASIBLE = self.INFEASIBLE = GRB_INFEASIBLE
+        self.status.OPTIMAL = self.OPTIMAL = GRB_OPTIMAL
+        self.status.INTERRUPTED = self.INTERRUPTED = GRB_INTERRUPTED
+        self.status.INF_OR_UNBD = self.INF_OR_UNBD = GRB_INF_OR_UNBD
+        self.status.UNBOUNDED = self.UNBOUNDED = GRB_UNBOUNDED
+        self.status.ITERATION_LIMIT = self.ITERATION_LIMIT = GRB_ITERATION_LIMIT
 
         self.LESS_EQUAL = GRB_LESS_EQUAL
         self.EQUAL = GRB_EQUAL
