@@ -417,15 +417,6 @@ cdef class Model:
         def __get__(self):
             return self.getIntAttr(b'numconstrs')
 
-    property NumVars:
-        def __get__(self):
-            return self.getIntAttr(b'numvars')
-
-    property Status:
-        def __get__(self):
-            return self.getIntAttr(b'status')
-
-
     cdef int fastGetX(self, int start, int length, double[::1] values) except -1:
         self.error = GRBgetdblattrarray(self.model, b'X', start, length, &values[0])
         if self.error:
@@ -524,12 +515,11 @@ cdef class Model:
         """Even faster constraint adding given variable index array. You need to ensure that
         *coeffs* and *varInds* have the same length, otherwise segfaults are likely to occur.
         """
-        cdef Constr constr
+        cdef Constr constr = Constr(self, -1)
         self.error = GRBaddconstr(self.model, coeffs.size, &varInds[0],
                                   &coeffs[0], sense, rhs, _chars(name))
         if self.error:
             raise GurobiError('Error adding constraint: {}'.format(self.error))
-        constr = Constr(self, -1)
         self.constrsAddedSinceUpdate.append(constr)
         self.needUpdate = True
         return constr
