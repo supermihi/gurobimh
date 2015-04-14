@@ -500,6 +500,7 @@ cdef class Model:
         if len(self.varInds) < coeffs.size:
             c_array.resize(self.varInds, coeffs.size)
             c_array.resize(self.varCoeffs, coeffs.size)
+            varInds = self.varInds
         for i in range(coeffs.size):
             varInds[i] = (<Var>vars[i]).index
         self.error = GRBaddconstr(self.model, coeffs.size, &varInds[0],
