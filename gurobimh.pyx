@@ -18,7 +18,6 @@ import sys
 # exception; saves us from having to return objects while still allowing error handling
 DEF ERRORCODE = -987654321
 
-
 __arrayCodeInt = b'i' if sys.version_info.major == 2 else 'i'  # workaround bytes/unicode issues
 __arrayCodeDbl = b'd' if sys.version_info.major == 2 else 'd'  # in Py2/3
 
@@ -166,7 +165,10 @@ cdef class GRBcls:
             return GRB_INFINITY
 
     def __init__(self):
-        self.status = type('StatusConstClass', (), {})
+        self.status = type(
+            'StatusConstClass' if sys.version_info.major == 3 else b'StatusConstClass',
+            (),
+            {})
         self.BINARY = GRB_BINARY
         self.CONTINUOUS = GRB_CONTINUOUS
         self.INTEGER = GRB_INTEGER
