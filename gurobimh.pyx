@@ -29,9 +29,9 @@ class GurobiError(Exception):
 
 #  we create one master environment used in all models
 cdef GRBenv *masterEnv = NULL
-cdef int _error = GRBloadenv(&masterEnv, NULL)
-if _error:
-    raise GurobiError('Loading Gurobi environment failed: error code {}'.format(_error))
+cdef int error = GRBloadenv(&masterEnv, NULL)
+if error:
+    raise ImportError('{}\n'.format(GRBgeterrormsg(masterEnv)))
 
 
 def read(fname):
@@ -51,7 +51,6 @@ def read(fname):
     return model
 
 
-
 cpdef quicksum(iterable):
     """Create LinExpr consisting of the parts of *iterable*. Elements in the iterator must be either
     Var or LinExpr objects."""
@@ -62,6 +61,7 @@ cpdef quicksum(iterable):
 
 
 cdef dict CallbackTypes = {}  # maps callback "what" constant to return type of Model.cbGet()
+
 
 cdef class CallbackClass:
     """Singleton class for callback constants"""
@@ -201,7 +201,6 @@ cdef class gurobi:
         cdef int major, minor, tech
         GRBversion(&major, &minor, &tech)
         return major, minor, tech
-
 
 
 cdef class VarOrConstr:
