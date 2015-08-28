@@ -104,10 +104,12 @@ cdef extern from 'gurobi_c.h':
     const int GRB_CB_MIPNODE_OBJBST
     const int GRB_CB_SPX_OBJVAL
 
+    # Error codes
     const int GRB_ERROR_CALLBACK
 
     void GRBversion (int *majorP, int *minorP, int *technicalP)
-    GRBenv* GRBgetenv(GRBmodel *)
+    GRBenv *GRBgetenv(GRBmodel *)
+    char *GRBgeterrormsg(GRBenv *env)
     int GRBloadenv(GRBenv **envP, const char *logfilename)
     int GRBnewmodel (GRBenv *, GRBmodel **modelP, const char *Pname, int numvars, double *obj,
                      double *lb, double *ub, char *vtype, const char **varnames )
