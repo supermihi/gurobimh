@@ -57,4 +57,5 @@ setup(
     license='GPL3',
     ext_modules=extensions,
     include_package_data=True,
+    data_files=[('', ['gurobimh.pxd'])],
 )
