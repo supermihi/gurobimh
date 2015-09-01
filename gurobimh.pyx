@@ -18,6 +18,7 @@ import sys
 # exception; saves us from having to return objects while still allowing error handling
 DEF ERRORCODE = -987654321
 
+__version__ = '2015.1'
 __arrayCodeInt = b'i' if sys.version_info.major == 2 else 'i'  # workaround bytes/unicode issues
 __arrayCodeDbl = b'd' if sys.version_info.major == 2 else 'd'  # in Py2/3
 
