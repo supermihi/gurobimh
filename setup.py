@@ -1,4 +1,3 @@
-#!/usr/bin/python2
 # -*- coding: utf-8 -*-
 # Copyright 2015 Michael Helmling
 #
@@ -7,8 +6,8 @@
 # published by the Free Software Foundation
 
 
-import sys
-import os
+import sys, os, io
+import re
 from os.path import dirname, abspath, join
 from setuptools import setup
 from Cython.Build import cythonize
@@ -26,20 +25,28 @@ if '--profile' in sys.argv:
 extensions = cythonize(['gurobimh.pyx'], compiler_directives=directives)
 extensions[0].include_dirs = [join(GHOME, 'include')]
 extensions[0].library_dirs = [join(GHOME, 'lib')]
-extensions[0].libraries = ['gurobi60']
+# find library version: library name includes major/minor version information (e.g.
+# libgurobi65.so vs libgurobi60.so). This hack-ish solution parses version information from
+# the C header file.
+with open(join(GHOME, 'include', 'gurobi_c.h'), 'rt') as f:
+    gurobi_c_h = f.read()
+major = re.findall('define GRB_VERSION_MAJOR\s+([0-9]+)', gurobi_c_h)[0]
+minor = re.findall('define GRB_VERSION_MINOR\s+([0-9]+)', gurobi_c_h)[0]
+extensions[0].libraries = ['gurobi' + major + minor]
+
+# read current gurobimh version from gurobimh.pyx file
+with io.open('gurobimh.pyx', 'rt', encoding='UTF-8') as f:
+    version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", f.read(), re.M)
+    version = version_match.group(1)
 
 
 def readme():
-    readmeFile = os.path.join(os.path.dirname(__file__), 'README.md')
-    if sys.version_info[0] >= 3:
-        return open(readmeFile, 'rt', encoding='utf8').read()
-    else:
-        import io
-        return io.open(readmeFile, 'rt', encoding='utf8').read()
+    return io.open('README.md', 'rt', encoding='utf8').read()
+
 
 setup(
     name='gurobimh',
-    version='0.4',
+    version=version,
     url='https://github.com/supermihi/gurobimh',
     classifiers=[
       'Development Status :: 3 - Alpha',
@@ -57,5 +64,6 @@ setup(
     license='GPL3',
     ext_modules=extensions,
     include_package_data=True,
+    install_requires=['Cython'],
     data_files=[('', ['gurobimh.pxd'])],
 )

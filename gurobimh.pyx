@@ -18,7 +18,7 @@ import sys
 # exception; saves us from having to return objects while still allowing error handling
 DEF ERRORCODE = -987654321
 
-__version__ = '2015.1'
+__version__ = '2015.2'
 __arrayCodeInt = b'i' if sys.version_info.major == 2 else 'i'  # workaround bytes/unicode issues
 __arrayCodeDbl = b'd' if sys.version_info.major == 2 else 'd'  # in Py2/3
 
@@ -152,9 +152,9 @@ cdef class GRBcls:
     """Dummy class emulating gurobipy.GRB"""
 
     cdef:
-        readonly char BINARY
-        readonly char CONTINUOUS
-        readonly char INTEGER
+        # variable types
+        readonly char BINARY, CONTINUOUS, INTEGER, SEMICONT, SEMIINT
+        # objective directions
         readonly int MAXIMIZE, MINIMIZE
         # status codes
         readonly int INFEASIBLE, OPTIMAL, INTERRUPTED, INF_OR_UNBD, UNBOUNDED, ITERATION_LIMIT
@@ -173,6 +173,8 @@ cdef class GRBcls:
         self.BINARY = GRB_BINARY
         self.CONTINUOUS = GRB_CONTINUOUS
         self.INTEGER = GRB_INTEGER
+        self.SEMICONT = GRB_SEMICONT
+        self.SEMIINT = GRB_SEMIINT
 
         self.MAXIMIZE = GRB_MAXIMIZE
         self.MINIMIZE = GRB_MINIMIZE

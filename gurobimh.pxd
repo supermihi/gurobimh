@@ -89,7 +89,7 @@ cdef extern from 'gurobi_c.h':
         pass
     ctypedef struct GRBmodel:
         pass
-    const char GRB_BINARY, GRB_CONTINUOUS, GRB_INTEGER
+    const char GRB_BINARY, GRB_CONTINUOUS, GRB_INTEGER, GRB_SEMICONT, GRB_SEMIINT
     const char GRB_EQUAL, GRB_LESS_EQUAL, GRB_GREATER_EQUAL
     # objective sense
     const int GRB_MAXIMIZE, GRB_MINIMIZE
