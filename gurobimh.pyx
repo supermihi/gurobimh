@@ -127,7 +127,7 @@ DblParams += ['FeasibilityTol', 'IntFeasTol', 'MIPGap', 'MIPGapAbs', 'Optimality
 # simplex
 IntParams += ['Method']
 # MIP
-IntParams += ['MIPFocus']
+IntParams += ['MIPFocus', 'VarBranch']
 # cuts
 IntParams += ['CutPasses']
 # other
