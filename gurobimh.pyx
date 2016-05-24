@@ -513,7 +513,8 @@ cdef class Model:
         cdef char my_sense
         if isinstance(lhs, TempConstr):
             expr = (<TempConstr>lhs).lhs - (<TempConstr>lhs).rhs
-            name = sense
+            if name == '' and sense is not None:
+                name = sense
             my_sense = (<TempConstr>lhs).sense
         else:
             expr = LinExpr(lhs)
@@ -603,6 +604,13 @@ cdef class Model:
 
     cpdef getConstrs(self):
         return self.constrs[:]
+
+    cpdef getVarByName(self, name):
+        cdef int numP
+        self.error = GRBgetvarbyname(self.model, _chars(name), &numP)
+        if self.error:
+            raise GurobiError('Error getting variable: {}'.format(self.error))
+        return self.vars[numP]
 
     cpdef getConstrByName(self, name):
         cdef int numP

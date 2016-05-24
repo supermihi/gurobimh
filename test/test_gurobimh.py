@@ -14,7 +14,8 @@ def get_knapsack_model(capacity, weights, values):
     item_selected = [m.addVar(ub=1, obj=values[item], name="item_selected." + str(item))
                               for item in items]
     m.update()
-    m.addConstr(grb.quicksum(weights[item]*item_selected[item] for item in items) <= capacity)
+    m.addConstr(grb.quicksum(weights[item]*item_selected[item] for item in items) <= capacity,
+                name='knapsack')
     m.update()
     return m, item_selected
 
@@ -46,6 +47,7 @@ class GurobiMHTest(unittest.TestCase):
         c1 = m.addConstr(x + y, '>', 1, name=c1_name)
         c2 = m.addConstr(x + y, GRB.LESS_EQUAL, 1)
         m.optimize()
+        m.write('mip1.lp')
         self.assertAlmostEqual(x.X, 1)
         self.assertAlmostEqual(y.X, 0)
         self.assertAlmostEqual(z.X, 1)
@@ -108,7 +110,7 @@ class GurobiMHTest(unittest.TestCase):
         m = grb.read('diet.lp')
         m.optimize()
         self.assertAlmostEqual(m.ObjVal, self.diet_cost)
-        x = [m.getVarByName('x.' + str(i) for i in range(1, 6))]
+        x = [m.getVarByName('x.' + str(i)) for i in range(1, 6)]
         for var, soln, rc in zip(x, self.diet_solution, self.diet_rcs):
             self.assertAlmostEqual(var.X, soln)
             self.assertAlmostEqual(var.RC, rc)
@@ -122,6 +124,8 @@ class GurobiMHTest(unittest.TestCase):
         capacity = 750
         m, item_selected = get_knapsack_model(capacity, weights, values)
         m.optimize()
+        self.assertIsNotNone(m.getConstrByName('knapsack'))
+        self.assertAlmostEqual(m.getConstrByName('knapsack').RHS, capacity)
         solution = m.getAttr('X', item_selected)
         target_solution = [1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0.721739130435, 1, 1]
         for i, j in zip(solution, target_solution):
