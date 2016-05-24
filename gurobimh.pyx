@@ -96,6 +96,7 @@ cdef list CharAttrs = []
 # var attrs
 StrAttrs += ['VarName']
 DblAttrs += ['LB', 'UB', 'Obj', 'Start']
+CharAttrs += ['VType']
 # constraint attrs
 DblAttrs += ['RHS']
 StrAttrs += ['ConstrName']
@@ -104,7 +105,7 @@ CharAttrs += ['Sense']
 IntAttrs += ['Status']
 DblAttrs += ['ObjVal', 'MIPGap', 'IterCount', 'NodeCount']
 # var attrs for current solution
-DblAttrs += ['X']
+DblAttrs += ['X', 'RC']
 # constr attr for current solution
 DblAttrs += ['Pi', 'Slack']
 
@@ -158,7 +159,7 @@ cdef class GRBcls:
         readonly int MAXIMIZE, MINIMIZE
         # status codes
         readonly int INFEASIBLE, OPTIMAL, INTERRUPTED, INF_OR_UNBD, UNBOUNDED, ITERATION_LIMIT
-        readonly char LESS_EQUAL, EQUAL, GREATER_EQUAL
+        readonly basestring LESS_EQUAL, EQUAL, GREATER_EQUAL
         readonly object Callback, callback, Param, param, Attr, attr, status
     # workaround: INFINITY class member clashes with gcc macro INFINITY
     property INFINITY:
@@ -186,9 +187,9 @@ cdef class GRBcls:
         self.status.UNBOUNDED = self.UNBOUNDED = GRB_UNBOUNDED
         self.status.ITERATION_LIMIT = self.ITERATION_LIMIT = GRB_ITERATION_LIMIT
 
-        self.LESS_EQUAL = GRB_LESS_EQUAL
-        self.EQUAL = GRB_EQUAL
-        self.GREATER_EQUAL = GRB_GREATER_EQUAL
+        self.LESS_EQUAL = '<'
+        self.EQUAL = '='
+        self.GREATER_EQUAL = '>'
 
         self.callback = self.Callback = CallbackClass()
         self.Param = self.param = ParamConstClass
@@ -246,6 +247,11 @@ cdef class Var(VarOrConstr):
     def __add__(self, other):
         cdef LinExpr result = LinExpr(self)
         LinExpr.addInplace(result, other)
+        return result
+
+    def __sub__(self, other):
+        cdef LinExpr result = LinExpr(self)
+        LinExpr.subtractInplace(result, other)
         return result
 
     def __mul__(self, other):
@@ -336,7 +342,13 @@ cdef class Model:
         if key[0] == '_':
             self.attrs[key] = value
         else:
-            raise NotImplementedError()
+            lAttr = key.lower()
+            if lAttr in StrAttrsLower:
+                GRBsetstrattr(self.model, key, value)
+            elif lAttr in IntAttrsLower:
+                GRBsetintattr(self.model, key, value)
+            else:
+                raise NotImplementedError()
 
     def __getattr__(self, attr):
         cdef int intValue
@@ -346,10 +358,15 @@ cdef class Model:
             return self.getIntAttr(lAttr)
         elif lAttr in DblAttrsLower:
             return self.getDblAttr(lAttr)
+        elif lAttr in StrAttrsLower:
+            return self.getStrAttr(lAttr)
         elif attr[0] == '_':
             return self.attrs[attr]
         else:
             raise GurobiError('Unknown model attribute: {}'.format(attr))
+
+    cpdef getAttr(self, char *attrname, objs=None):
+        return [obj.__getattr__(attrname) for obj in objs]
 
     cdef int getIntAttr(self, char *attr) except ERRORCODE:
         cdef int value
@@ -363,6 +380,13 @@ cdef class Model:
         self.error = GRBgetdblattr(self.model, attr, &value)
         if self.error:
             raise GurobiError('Error retrieving double attribute: {}'.format(self.error))
+        return value
+
+    cdef char* getStrAttr(self, char *attrname):
+        cdef char* value
+        self.error = GRBgetstrattr(self.model, attrname, &value)
+        if self.error:
+            raise GurobiError('Error retrieving str attribute: {}'.format(self.error))
         return value
 
     cdef double getElementDblAttr(self, char *attr, int element) except ERRORCODE:
@@ -413,8 +437,12 @@ cdef class Model:
             self.error = GRBsetdblattrelement(self.model, lAttr, element, <double>newValue)
             if self.error:
                 raise GurobiError('Error setting double attr: {}'.format(self.error))
+        elif lAttr in CharAttrsLower:
+            self.error = GRBsetcharattrelement(self.model, lAttr, element, <char>newValue)
+            if self.error:
+                raise GurobiError('Error setting char attr: {}'.format(self.error))
         else:
-            raise GurobiError('Unknonw attribute {}'.format(attr))
+            raise GurobiError('Unknown attribute {}'.format(attr))
 
     # explicit getters for time-critical attributes (speedup avoiding __getattr__)
     property NumConstrs:
@@ -427,11 +455,18 @@ cdef class Model:
             raise GurobiError('Error getting X: {}'.format(self.error))
 
     cpdef addVar(self, double lb=0, double ub=GRB_INFINITY, double obj=0.0,
-               char vtype=GRB_CONTINUOUS, name=''):
+               char vtype=GRB_CONTINUOUS, name='', column=None):
         cdef Var var
+        cdef c_array.array[int] vind
+        cdef c_array.array[double] vval
         if isinstance(name, unicode):
             name = name.encode('utf8')
-        self.error = GRBaddvar(self.model, 0, NULL, NULL, obj, lb, ub, vtype, name)
+        if column is None:
+            self.error = GRBaddvar(self.model, 0, NULL, NULL, obj, lb, ub, vtype, name)
+        else:
+            vind = array(__arrayCodeInt, [(<Constr>constr).index for constr in (<Column>column).constrs])
+            vval = array(__arrayCodeDbl, (<Column>column).coeffs)
+            self.error = GRBaddvar(self.model, (<Column>column).numnz, vind.data.as_ints, vval.data.as_doubles, obj, lb, ub, vtype, name)
         if self.error:
             raise GurobiError('Error creating variable: {}'.format(self.error))
         var = Var(self, -1)
@@ -471,19 +506,22 @@ cdef class Model:
             varCoeffs[i] = coeff
         return lenDct
 
-    cpdef addConstr(self, lhs, char sense=-1, rhs=None, name=''):
+    cpdef addConstr(self, lhs, basestring sense=None, rhs=None, name=''):
         cdef LinExpr expr
         cdef int lenDct
         cdef Constr constr
+        cdef char my_sense
         if isinstance(lhs, TempConstr):
             expr = (<TempConstr>lhs).lhs - (<TempConstr>lhs).rhs
-            sense = (<TempConstr>lhs).sense
+            name = sense
+            my_sense = (<TempConstr>lhs).sense
         else:
             expr = LinExpr(lhs)
             LinExpr.subtractInplace(expr, rhs)
+            my_sense = ord(sense[0])
         lenDct = self.compressLinExpr(expr)
         self.error = GRBaddconstr(self.model, lenDct, self.varInds.data.as_ints,
-                                  self.varCoeffs.data.as_doubles, sense,
+                                  self.varCoeffs.data.as_doubles, my_sense,
                                   -expr.constant, _chars(name))
         if self.error:
             raise GurobiError('Error adding constraint: {}'.format(self.error))
@@ -685,6 +723,19 @@ cdef class Model:
 cdef c_array.array dblOne = array(__arrayCodeDbl, [1])
 
 
+cdef class Column:
+    def __init__(self, coeffs, constrs):
+        if hasattr(coeffs, '__iter__') and hasattr(constrs, '__iter__'):
+            if len(self.coeffs) != len(self.constrs):
+                raise GurobiError("Array lengths don't match")
+            self.coeffs = coeffs
+            self.constrs = constrs
+        else:
+            self.numnz = 1
+            self.coeffs = array(__arrayCodeDbl, [coeffs])
+            self.constrs = [constrs]
+
+
 cdef class LinExpr:
 
     def __init__(self, arg1=0.0, arg2=None):
@@ -723,6 +774,8 @@ cdef class LinExpr:
                 return
             else:
                 arg1, arg2 = zip(*arg1)
+        if isinstance(arg2, Var):
+            arg1, arg2 = arg2, arg1
         if isinstance(arg1, Var):
             self.vars = [arg1]
             self.coeffs = c_array.clone(dblOne, 1, False)

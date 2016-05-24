@@ -19,6 +19,20 @@ def get_knapsack_model(capacity, weights, values):
     return m, item_selected
 
 
+def get_knapsack_model_column(capacity, weights, values):
+    items = range(len(weights))
+    m = grb.Model()
+    m.ModelSense = GRB.MAXIMIZE
+    m.ModelName = "knapsack_column"
+    constr = m.addConstr(0, 'L', capacity, name='knapsack')
+    m.update()
+    item_selected = [m.addVar(ub=1, obj=values[item], column=grb.Column(weights[item], constr),
+                              name="x." + str(item))
+                     for item in items]
+    m.update()
+    return m, item_selected
+
+
 class GurobiMHTest(unittest.TestCase):
     def test_simple_mip(self):
         m = grb.Model()
@@ -44,6 +58,11 @@ class GurobiMHTest(unittest.TestCase):
         self.assertEqual(c0.ConstrName, c0_name)
         self.assertEqual(c1.ConstrName, c1_name)
 
+    diet_solution = [0, 0, 0, 1, 10]
+    diet_rcs = [34/3.0, 20/3.0, 34/3.0, 0, 0]
+    diet_pis = [13/3.0, 10/3.0]
+    diet_cost = 131
+
     def test_diet(self):
         m = grb.Model()
         x1 = m.addVar(lb=0, ub=GRB.INFINITY, obj=20, vtype=GRB.CONTINUOUS, name='x.1')
@@ -57,25 +76,47 @@ class GurobiMHTest(unittest.TestCase):
         calcium_constr = m.addConstr(x2 + 2*x3 + 2*x4 + x5 >= 12, 'nutrient.calcium')
         m.update()
         m.optimize()
+        self.assertAlmostEqual(m.ObjVal, self.diet_cost)
+        for var, soln, rc in zip([x1, x2, x3, x4, x5], self.diet_solution, self.diet_rcs):
+            self.assertAlmostEqual(var.X, soln)
+            self.assertAlmostEqual(var.RC, rc)
+        for constr, pi in zip([iron_constr, calcium_constr], self.diet_pis):
+            self.assertAlmostEqual(constr.Pi, pi)
+        m.write('diet.lp')
 
-        self.assertAlmostEqual(x1.X, 0)
-        self.assertAlmostEqual(x2.X, 0)
-        self.assertAlmostEqual(x3.X, 0)
-        self.assertAlmostEqual(x4.X, 1)
-        self.assertAlmostEqual(x5.X, 10)
+    def test_diet_dual(self):
+        m = grb.Model()
+        m.ModelSense = GRB.MAXIMIZE
+        pi_i = m.addVar(obj=21)
+        pi_c = m.addVar(obj=12)
+        m.update()
+        f1 = m.addConstr(2*pi_i <= 20)
+        f2 = m.addConstr(pi_c <= 10)
+        f3 = m.addConstr(3*pi_i + 2*pi_c <= 31)
+        f4 = m.addConstr(pi_i + 2*pi_c <= 11)
+        f5 = m.addConstr(2*pi_i + pi_c <= 12)
+        m.update()
+        m.optimize()
+        self.assertAlmostEqual(m.ObjVal, self.diet_cost)
+        for var, pi in zip([pi_i, pi_c], self.diet_pis):
+            self.assertAlmostEqual(var.X, pi)
+        for constr, soln, rc in zip([f1, f2, f3, f4, f5], self.diet_solution, self.diet_rcs):
+            self.assertAlmostEqual(constr.Pi, soln)
+            self.assertAlmostEqual(constr.Slack, rc)
 
-        self.assertAlmostEqual(x1.RC, 34/3.0)
-        self.assertAlmostEqual(x2.RC, 20/3.0)
-        self.assertAlmostEqual(x3.RC, 34/3.0)
-        self.assertAlmostEqual(x4.RC, 0)
-        self.assertAlmostEqual(x5.RC, 0)
+    def test_diet_read(self):
+        m = grb.read('diet.lp')
+        m.optimize()
+        self.assertAlmostEqual(m.ObjVal, self.diet_cost)
+        x = [m.getVarByName('x.' + str(i) for i in range(1, 6))]
+        for var, soln, rc in zip(x, self.diet_solution, self.diet_rcs):
+            self.assertAlmostEqual(var.X, soln)
+            self.assertAlmostEqual(var.RC, rc)
+        constrs = [m.getConstrByName('nutrient.iron'), m.getConstrByName('nutrient.calcium')]
+        for constr, pi in zip(constrs, self.diet_pis):
+            self.assertAlmostEqual(constr.Pi, pi)
 
-        self.assertAlmostEqual(m.ObjVal, 131)
-
-        self.assertAlmostEqual(iron_constr.Pi, 13/3.0)
-        self.assertAlmostEqual(calcium_constr.Pi, 10/3.0)
-
-    def test_knapsack1(self):
+    def test_knapsack(self):
         weights = [70, 73, 77, 80, 82, 87, 90, 94, 98, 106, 110, 113, 115, 118, 120]
         values = [135, 139, 149, 150, 156, 163, 173, 184, 192, 201, 210, 214, 221, 229, 240]
         capacity = 750
@@ -85,6 +126,13 @@ class GurobiMHTest(unittest.TestCase):
         target_solution = [1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0.721739130435, 1, 1]
         for i, j in zip(solution, target_solution):
             self.assertAlmostEqual(i, j)
+
+        m2, item_selected2 = get_knapsack_model_column(capacity, weights, values)
+        m2.optimize()
+        solution = m2.getAttr('X', item_selected2)
+        for i,j in zip(solution, target_solution):
+            self.assertAlmostEqual(i, j)
+        self.assertEqual(m2.ModelName, "knapsack_column")
 
         for var in item_selected:
             var.vtype = GRB.BINARY

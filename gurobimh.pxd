@@ -17,6 +17,12 @@ cdef class Constr(VarOrConstr):
     pass
 
 
+cdef class Column:
+    cdef int numnz
+    cdef array.array coeffs
+    cdef list constrs
+
+
 cdef class LinExpr:
     cdef int length
     cdef list vars
@@ -53,6 +59,7 @@ cdef class Model:
     #
     # attribute handling
     cdef getElementAttr(self, char* key, int element)
+    cdef char* getStrAttr(self, char *attrname)
     cdef int getIntAttr(self, char *attr) except ERRORCODE
     cdef double getDblAttr(self, char *attr) except ERRORCODE
     cdef double getElementDblAttr(self, char *attr, int element) except ERRORCODE
@@ -67,8 +74,9 @@ cdef class Model:
     # =======================
     # public Python interface
     # =======================
-    cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?)
-    cpdef addConstr(self, lhs, char sense=?, rhs=?, name=?)
+    cpdef getAttr(self, char* attrname, objs=?)
+    cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?, column=?)
+    cpdef addConstr(self, lhs, basestring sense=?, rhs=?, name=?)
     cpdef setObjective(self, expression, sense=*)
     cpdef terminate(self)
     cpdef getVars(self)
@@ -122,11 +130,14 @@ cdef extern from 'gurobi_c.h':
     int GRBgetintattr (GRBmodel *, const char *attrname, int *valueP)
     int GRBgetdblattr (GRBmodel *, const char *attrname, double *valueP)
     int GRBsetdblattr (GRBmodel *, const char *attrname, double newvalue)
+    int GRBgetstrattr (GRBmodel *, const char *attrname, char **valueP)
+    int GRBsetstrattr (GRBmodel *, const char *attrname, const char *newvalue)
     int GRBsetdblattrelement (GRBmodel *, const char *attrname, int element, double newvalue)
     int GRBgetdblattrelement (GRBmodel *, const char *attrname, int element, double *valueP)
     int GRBgetintattrelement (GRBmodel *, const char *attrname, int element, int *valueP)
     int GRBgetstrattrelement (GRBmodel *, const char *attrname, int element, char **valueP)
     int GRBsetstrattrelement (GRBmodel *, const char *attrname, int element, char *value)
+    int GRBsetcharattrelement (GRBmodel *, const char * attrname, int element, char value)
     int GRBsetdblattrarray (GRBmodel *, const char *attrname, int start, int len, double *values)
     int GRBgetdblattrarray (GRBmodel *, const char *attrname, int start, int len, double *values)
     int GRBsetintparam (GRBenv *, const char *paramname, int newvalue)
