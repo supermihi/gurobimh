@@ -1,6 +1,4 @@
 import unittest
-import sys
-sys.path.append('..')
 
 import gurobimh as grb
 GRB = grb.GRB
@@ -47,7 +45,6 @@ class GurobiMHTest(unittest.TestCase):
         c1 = m.addConstr(x + y, '>', 1, name=c1_name)
         c2 = m.addConstr(x + y, GRB.LESS_EQUAL, 1)
         m.optimize()
-        m.write('mip1.lp')
         self.assertAlmostEqual(x.X, 1)
         self.assertAlmostEqual(y.X, 0)
         self.assertAlmostEqual(z.X, 1)
@@ -84,7 +81,6 @@ class GurobiMHTest(unittest.TestCase):
             self.assertAlmostEqual(var.RC, rc)
         for constr, pi in zip([iron_constr, calcium_constr], self.diet_pis):
             self.assertAlmostEqual(constr.Pi, pi)
-        m.write('diet.lp')
 
     def test_diet_dual(self):
         m = grb.Model()
@@ -107,7 +103,7 @@ class GurobiMHTest(unittest.TestCase):
             self.assertAlmostEqual(constr.Slack, rc)
 
     def test_diet_read(self):
-        m = grb.read('diet.lp')
+        m = grb.read('./test/diet.lp')
         m.optimize()
         self.assertAlmostEqual(m.ObjVal, self.diet_cost)
         x = [m.getVarByName('x.' + str(i)) for i in range(1, 6)]
@@ -148,5 +144,90 @@ class GurobiMHTest(unittest.TestCase):
 
         self.assertEqual(m.ModelName, "knapsack")
 
+    def test_unary_minus(self):
+        m = grb.Model()
+        x = [m.addVar() for i in range(10)]
+        m.update()
+        expr1 = grb.quicksum(i*var for i, var in enumerate(x))
+        expr2 = -expr1
+        self.assertEqual(expr1.size(), expr2.size())
+        for i in range(expr2.size()):
+            self.assertEqual(expr2.getCoeff(i), -i)
+            self.assertEqual(expr2.getVar(i), x[i])
+
+    def test_reset(self):
+        m = grb.Model()
+        x = [m.addVar(lb=i, name='x'+str(i)) for i in range(10)]
+        m.reset()
+        y = [m.addVar(ub=1000*i, name='y'+str(i)) for i in range(5)]
+        m.update()
+        m.setObjective(grb.quicksum(x) - grb.quicksum(y))
+        m.optimize()
+        self.assertAlmostEqual(m.ObjVal, sum(range(10)) - 1000*sum(range(5)))
+        for var in x:
+            self.assertAlmostEqual(var.X, var.LB)
+        for var in y:
+            self.assertAlmostEqual(var.X, var.UB)
+
+    def test_scalar_multiply(self):
+        for c1 in range(1, 10):
+            for c2 in range(1, 10):
+                m = grb.Model()
+                m.setParam('OutputFlag', 0)
+                x = [m.addVar() for i in range(100)]
+                m.update()
+                expr = grb.quicksum(x)
+                constr = m.addConstr(c1*expr >= 1)
+                expr *= c2
+                m.setObjective(expr)
+                m.optimize()
+                self.assertAlmostEqual(m.ObjVal, float(c2)/float(c1))
+
+    def test_attribute_error(self):
+        m = grb.Model()
+        m._blah = 5
+        self.assertEqual(m._blah, 5)
+        with self.assertRaises(AttributeError): m.blah = 5
+        with self.assertRaises(AttributeError): x = m.blah
+        with self.assertRaises(AttributeError): x = m._invalid
+        var = m.addVar()
+        constr = m.addConstr(0, 'L', 0)
+        m.update()
+        var._blah = 5
+        self.assertEqual(var._blah, 5)
+        constr._blah = 5
+        self.assertEqual(constr._blah, 5)
+        with self.assertRaises(AttributeError): var.blah = 5
+        with self.assertRaises(AttributeError): x = var.blah
+        with self.assertRaises(AttributeError): x = var._invalid
+        with self.assertRaises(AttributeError): constr.blah = 5
+        with self.assertRaises(AttributeError): x = constr.blah
+        with self.assertRaises(AttributeError): x = constr._invalid
+
+        self.assertEquals(getattr(m, '_typ', '_typ'), '_typ')
+        self.assertEquals(getattr(var, '_typ', '_typ'), '_typ')
+        self.assertEquals(getattr(constr, '_typ', '_typ'), '_typ')
+
+
+    def test_add_empty_expression(self):
+        num_vars = 100
+        m = grb.Model()
+        x = [m.addVar() for i in range(num_vars)]
+        m.update()
+        expr = grb.quicksum(x)
+        self.assertEquals((expr + grb.LinExpr()).size(), num_vars)
+        self.assertEquals((expr - grb.LinExpr()).size(), num_vars)
+        expr += grb.LinExpr()
+        self.assertEquals(expr.size(), num_vars)
+        expr -= grb.LinExpr()
+        self.assertEquals(expr.size(), num_vars)
+        expr += grb.LinExpr(100)
+        self.assertEquals(expr.getConstant(), 100)
+        expr -= grb.LinExpr(10)
+        self.assertEquals(expr.getConstant(), 90)
+
+
 if __name__ == '__main__':
+    m = grb.Model()
+    m.setParam('OutputFlag', 0)
     unittest.main()

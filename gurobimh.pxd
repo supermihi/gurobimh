@@ -7,7 +7,7 @@ cpdef quicksum(iterable)
 cdef class VarOrConstr:
     cdef int index
     cdef Model model
-
+    cdef dict attrs  # user attributes
 
 cdef class Var(VarOrConstr):
     pass
@@ -28,12 +28,17 @@ cdef class LinExpr:
     cdef list vars
     cdef array.array coeffs
     cdef double constant
+    cpdef int size(LinExpr self)
+    cpdef double getCoeff(LinExpr self, int i)
+    cpdef Var getVar(LinExpr self, int i)
+    cpdef double getConstant(LinExpr self)
     cdef LinExpr copy(self)
     @staticmethod
     cdef int addInplace(LinExpr first, other) except -1
     @staticmethod
     cdef int subtractInplace(LinExpr first, other) except -1
-
+    @staticmethod
+    cdef int multiplyInplace(LinExpr expr, double scalar) except -1
 
 cdef class Model:
     cdef GRBmodel *model
@@ -78,12 +83,14 @@ cdef class Model:
     cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?, column=?)
     cpdef addConstr(self, lhs, basestring sense=?, rhs=?, name=?)
     cpdef setObjective(self, expression, sense=*)
+    cpdef LinExpr getObjective(self)
     cpdef terminate(self)
     cpdef getVars(self)
     cpdef getConstrs(self)
     cpdef getVarByName(self, name)
     cpdef getConstrByName(self, name)
     cpdef remove(self, VarOrConstr what)
+    cpdef reset(self)
     cpdef update(self)
     cpdef optimize(self, callback=?)
     cpdef cbGet(self, int what)
@@ -117,6 +124,7 @@ cdef extern from 'gurobi_c.h':
     const int GRB_ERROR_CALLBACK
 
     void GRBversion (int *majorP, int *minorP, int *technicalP)
+    char *GRBplatform()
     GRBenv *GRBgetenv(GRBmodel *)
     char *GRBgeterrormsg(GRBenv *env)
     int GRBloadenv(GRBenv **envP, const char *logfilename)
