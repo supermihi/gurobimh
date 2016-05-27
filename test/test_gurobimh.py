@@ -208,7 +208,6 @@ class GurobiMHTest(unittest.TestCase):
         self.assertEquals(getattr(var, '_typ', '_typ'), '_typ')
         self.assertEquals(getattr(constr, '_typ', '_typ'), '_typ')
 
-
     def test_add_empty_expression(self):
         num_vars = 100
         m = grb.Model()
@@ -225,6 +224,50 @@ class GurobiMHTest(unittest.TestCase):
         self.assertEquals(expr.getConstant(), 100)
         expr -= grb.LinExpr(10)
         self.assertEquals(expr.getConstant(), 90)
+
+    def test_pwl_obj(self):
+        m = grb.Model()
+        v1 = m.addVar()
+        v2 = m.addVar()
+        m.update()
+
+        x = [0, 1, 2]
+        y = [0, 1, 4]
+        m.setPWLObj(v1, x, y)
+
+        v1.LB = 0.5
+        m.optimize()
+        self.assertAlmostEqual(v1.X, 0.5)
+        self.assertAlmostEqual(m.ObjVal, 0.5)
+
+        v1.LB = 1.5
+        m.optimize()
+        self.assertAlmostEqual(v1.X, 1.5)
+        self.assertAlmostEqual(m.ObjVal, 2.5)
+
+        # Model.setObjective should wipe out any previously-set objectives
+        m.setObjective(100*v2)
+        v2.LB = 7
+        m.optimize()
+        self.assertAlmostEqual(m.ObjVal, 700)
+
+        # Add a pwl objective when a linear objective is already set
+        # the pwl and linear objectives should add
+        m.setPWLObj(v1, x, y)
+        m.optimize()
+        self.assertAlmostEqual(m.ObjVal, 702.5)
+
+    def test_linexpr_get_value(self):
+        m = grb.Model()
+        for n in [10, 100, 1000]:
+            x = [m.addVar(lb=i) for i in range(n)]
+            m.update()
+            expr = grb.quicksum(i*var for i, var in enumerate(x))
+            m.setObjective(expr)
+            m.optimize()
+            self.assertAlmostEqual(expr.getValue(), m.ObjVal)
+            self.assertAlmostEqual(expr.getValue(), m.getObjective().getValue())
+            self.assertAlmostEqual(expr.getValue(), sum(i*i for i in range(n)))
 
 
 if __name__ == '__main__':

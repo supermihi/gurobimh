@@ -32,6 +32,7 @@ cdef class LinExpr:
     cpdef double getCoeff(LinExpr self, int i)
     cpdef Var getVar(LinExpr self, int i)
     cpdef double getConstant(LinExpr self)
+    cpdef double getValue(LinExpr self)
     cdef LinExpr copy(self)
     @staticmethod
     cdef int addInplace(LinExpr first, other) except -1
@@ -83,6 +84,7 @@ cdef class Model:
     cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?, column=?)
     cpdef addConstr(self, lhs, basestring sense=?, rhs=?, name=?)
     cpdef setObjective(self, expression, sense=*)
+    cpdef setPWLObj(self, Var var, x, y)
     cpdef LinExpr getObjective(self)
     cpdef terminate(self)
     cpdef getVars(self)
@@ -164,3 +166,4 @@ cdef extern from 'gurobi_c.h':
     int GRBcbget(void *cbdata, int where, int what, void *resultP)
     void GRBterminate (GRBmodel *)
     int GRBwrite(GRBmodel *, const char *filename)
+    int GRBsetpwlobj (GRBmodel *model, int var, int npoints, double *x, double *y)

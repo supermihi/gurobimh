@@ -588,10 +588,12 @@ cdef class Model:
         cdef LinExpr expr = expression if isinstance(expression, LinExpr) else LinExpr(expression)
         cdef int i, error, length
         cdef Var var
+        cdef c_array.array[double] zeros = array(__arrayCodeDbl, [0]*len(self.vars))
         if sense is not None:
             self.error = GRBsetintattr(self.model, b'ModelSense', <int>sense)
             if self.error:
                 raise GurobiError('Error setting objective sense: {}'.format(self.error))
+        GRBsetdblattrarray(self.model, b'Obj', 0, len(self.vars), zeros.data.as_doubles)
         length = self.compressLinExpr(expr)
         for i in range(length):
             self.error = GRBsetdblattrelement(self.model, b'Obj',
@@ -603,6 +605,19 @@ cdef class Model:
             self.error = GRBsetdblattr(self.model, b'ObjCon', expr.constant)
             if self.error:
                 raise GurobiError('Error setting objective constant: {}'.format(self.error))
+        self.needUpdate = True
+
+    cpdef setPWLObj(self, Var var, x, y):
+        cdef int npoints = len(x)
+        cdef c_array.array[double] _x
+        cdef c_array.array[double] _y
+        if len(x) != len(y):
+            raise GurobiError("Arguments x and y must have the same length")
+        _x = array(__arrayCodeDbl, x)
+        _y = array(__arrayCodeDbl, y)
+        self.error = GRBsetpwlobj(self.model, (<Var>var).index, npoints, _x.data.as_doubles, _y.data.as_doubles)
+        if self.error:
+            raise GurobiError('Error setting PWL objective: {}'.format(self.error))
         self.needUpdate = True
 
     cpdef LinExpr getObjective(self):
@@ -849,6 +864,12 @@ cdef class LinExpr:
 
     cpdef double getConstant(LinExpr self):
         return self.constant
+
+    cpdef double getValue(LinExpr self):
+        cdef double total = 0
+        for i in range(self.length):
+            total += self.coeffs[i]*self.vars[i].X
+        return total
 
     @staticmethod
     cdef int addInplace(LinExpr first, other) except -1:
