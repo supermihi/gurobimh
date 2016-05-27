@@ -160,6 +160,8 @@ cdef class GRBcls:
         readonly int MAXIMIZE, MINIMIZE
         # status codes
         readonly int INFEASIBLE, OPTIMAL, INTERRUPTED, INF_OR_UNBD, UNBOUNDED, ITERATION_LIMIT
+        readonly int LOADED, CUTOFF, TIME_LIMIT, SOLUTION_LIMIT, NUMERIC, SUBOPTIMAL, INPROGRESS
+        # constraint senses
         readonly basestring LESS_EQUAL, EQUAL, GREATER_EQUAL
         readonly object Callback, callback, Param, param, Attr, attr, status
     # workaround: INFINITY class member clashes with gcc macro INFINITY
@@ -187,6 +189,13 @@ cdef class GRBcls:
         self.status.INF_OR_UNBD = self.INF_OR_UNBD = GRB_INF_OR_UNBD
         self.status.UNBOUNDED = self.UNBOUNDED = GRB_UNBOUNDED
         self.status.ITERATION_LIMIT = self.ITERATION_LIMIT = GRB_ITERATION_LIMIT
+        self.status.LOADED = self.LOADED = GRB_LOADED
+        self.status.CUTOFF = self.CUTOFF = GRB_CUTOFF
+        self.status.TIME_LIMIT = self.TIME_LIMIT = GRB_TIME_LIMIT
+        self.status.SOLUTION_LIMIT = self.SOLUTION_LIMIT = GRB_SOLUTION_LIMIT
+        self.status.NUMERIC = self.NUMERIC = GRB_NUMERIC
+        self.status.SUBOPTIMAL = self.SUBOPTIMAL = GRB_SUBOPTIMAL
+        self.status.INPROGRESS = self.INPROGRESS = GRB_INPROGRESS
 
         self.LESS_EQUAL = '<'
         self.EQUAL = '='

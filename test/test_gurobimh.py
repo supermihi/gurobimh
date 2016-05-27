@@ -265,6 +265,8 @@ class GurobiMHTest(unittest.TestCase):
             expr = grb.quicksum(i*var for i, var in enumerate(x))
             m.setObjective(expr)
             m.optimize()
+            self.assertEqual(m.Status, grb.GRB.OPTIMAL)
+            self.assertEqual(m.Status, grb.GRB.status.OPTIMAL)
             self.assertAlmostEqual(expr.getValue(), m.ObjVal)
             self.assertAlmostEqual(expr.getValue(), m.getObjective().getValue())
             self.assertAlmostEqual(expr.getValue(), sum(i*i for i in range(n)))
