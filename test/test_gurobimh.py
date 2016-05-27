@@ -269,6 +269,26 @@ class GurobiMHTest(unittest.TestCase):
             self.assertAlmostEqual(expr.getValue(), m.getObjective().getValue())
             self.assertAlmostEqual(expr.getValue(), sum(i*i for i in range(n)))
 
+    def test_add_range(self):
+        for scale in [1, 10, 100]:
+            m = grb.Model()
+            m.setParam('OutputFlag', 0)
+            x = [m.addVar() for i in range(10)]
+            m.update()
+            objective = grb.quicksum(x)
+            for i in [1, 2, 3, 4, 5]:
+                lb = i
+                ub = 10 - i
+                constr = m.addRange(scale*objective, lb, ub)
+                m.setObjective(objective, sense=GRB.MINIMIZE)
+                m.optimize()
+                self.assertAlmostEqual(m.ObjVal, float(lb)/scale)
+                self.assertAlmostEqual(constr.Pi, 1.0/scale)
+                m.setObjective(objective, sense=GRB.MAXIMIZE)
+                m.optimize()
+                self.assertAlmostEqual(m.ObjVal, float(ub)/scale)
+                self.assertAlmostEqual(constr.Pi, 1.0/scale)
+
 
 if __name__ == '__main__':
     m = grb.Model()

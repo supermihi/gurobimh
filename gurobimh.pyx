@@ -522,6 +522,18 @@ cdef class Model:
             varCoeffs[i] = coeff
         return lenDct
 
+    cpdef addRange(self, LinExpr expr, double lower, double upper, name=''):
+        cdef int lenDct = self.compressLinExpr(expr)
+        self.error = GRBaddrangeconstr(self.model, lenDct, self.varInds.data.as_ints,
+                                       self.varCoeffs.data.as_doubles, lower, upper,
+                                       _chars(name))
+        if self.error:
+            raise GurobiError('Error adding range constraint: {}'.format(self.error))
+        constr = Constr(self, -1)
+        self.constrsAddedSinceUpdate.append(constr)
+        self.needUpdate = True
+        return constr
+
     cpdef addConstr(self, lhs, basestring sense=None, rhs=None, name=''):
         cdef LinExpr expr
         cdef int lenDct

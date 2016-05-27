@@ -82,6 +82,7 @@ cdef class Model:
     # =======================
     cpdef getAttr(self, char* attrname, objs=?)
     cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?, column=?)
+    cpdef addRange(self, LinExpr expr, double lower, double upper, name=?)
     cpdef addConstr(self, lhs, basestring sense=?, rhs=?, name=?)
     cpdef setObjective(self, expression, sense=*)
     cpdef setPWLObj(self, Var var, x, y)
@@ -154,6 +155,7 @@ cdef extern from 'gurobi_c.h':
     int GRBsetintparam (GRBenv *, const char *paramname, int newvalue)
     int GRBsetdblparam (GRBenv *, const char *paramname, double newvalue)
     int GRBupdatemodel (GRBmodel *)
+    int GRBaddrangeconstr (GRBmodel *, int numnz, int *cind, double *cval, double lower, double upper, const char *constrname)
     int GRBaddconstr (GRBmodel *, int numnz, int *cind, double *cval, char sense, double rhs, const char *constrname)
     int GRBdelconstrs (GRBmodel *, int numdel, int *ind)
     int GRBgetvarbyname (GRBmodel *, const char *name, int *varnumP)
