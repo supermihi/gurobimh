@@ -48,6 +48,7 @@ cdef class Model:
     cdef list vars, varsAddedSinceUpdate, varsRemovedSinceUpdate
     cdef list constrs,  constrsAddedSinceUpdate, constrsRemovedSinceUpdate
     cdef bint needUpdate
+    cdef int numRangesAddedSinceUpdate
     cdef array.array varInds, varCoeffs
     cdef dict linExpDct
     # callback handling

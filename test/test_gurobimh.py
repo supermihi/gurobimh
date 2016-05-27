@@ -281,7 +281,16 @@ class GurobiMHTest(unittest.TestCase):
             for i in [1, 2, 3, 4, 5]:
                 lb = i
                 ub = 10 - i
+                dummy_vars = [m.addVar() for j in range(i)]
                 constr = m.addRange(scale*objective, lb, ub)
+                extra_var = m.addVar(name="extra_var." + str(i))
+                m.update()
+                range_var = m.getVars()[-2-i]
+                self.assertEqual(range_var.VarName, "RgR" + str(i-1))
+                self.assertAlmostEqual(range_var.UB, 10 - 2*i)
+                for var in dummy_vars:
+                    self.assertFalse(var.VarName.startswith('Rg'))
+                self.assertEquals(extra_var.VarName, "extra_var." + str(i))
                 m.setObjective(objective, sense=GRB.MINIMIZE)
                 m.optimize()
                 self.assertAlmostEqual(m.ObjVal, float(lb)/scale)

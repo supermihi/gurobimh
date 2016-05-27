@@ -335,6 +335,7 @@ cdef class Model:
         self.varsRemovedSinceUpdate = []
         self.constrsAddedSinceUpdate = []
         self.constrsRemovedSinceUpdate = []
+        self.numRangesAddedSinceUpdate = 0
         self.varInds = array(__arrayCodeInt, [0]*25)
         self.varCoeffs = array(__arrayCodeDbl, [0]*25)
         self.needUpdate = False
@@ -540,6 +541,7 @@ cdef class Model:
             raise GurobiError('Error adding range constraint: {}'.format(self.error))
         constr = Constr(self, -1)
         self.constrsAddedSinceUpdate.append(constr)
+        self.numRangesAddedSinceUpdate += 1
         self.needUpdate = True
         return constr
 
@@ -720,36 +722,43 @@ cdef class Model:
         error = GRBupdatemodel(self.model)
         if error:
             raise GurobiError('Error updating the model: {}'.format(self.error))
-        if len(self.varsRemovedSinceUpdate):
-            for i in sorted(self.varsRemovedSinceUpdate, reverse=True):
-                voc = <Var>self.vars[i]
-                voc.index = -3
-                del self.vars[i]
-                for voc in self.vars[i:]:
-                    voc.index -= 1
-                numVars -= 1
-            self.varsRemovedSinceUpdate = []
-        if len(self.constrsRemovedSinceUpdate):
-            for i in sorted(self.constrsRemovedSinceUpdate, reverse=True):
-                voc = <Constr>self.constrs[i]
-                voc.index = -3
-                del self.constrs[i]
-                for voc in self.constrs[i:]:
-                    voc.index -= 1
-                numConstrs -= 1
-            self.constrsRemovedSinceUpdate = []
-        if len(self.varsAddedSinceUpdate):
-            for i in range(len(self.varsAddedSinceUpdate)):
-                voc = self.varsAddedSinceUpdate[i]
-                voc.index = numVars + i
-                self.vars.append(voc)
-            self.varsAddedSinceUpdate = []
-        if len(self.constrsAddedSinceUpdate):
-            for i in range(len(self.constrsAddedSinceUpdate)):
-                voc = self.constrsAddedSinceUpdate[i]
-                voc.index = numConstrs + i
-                self.constrs.append(voc)
-            self.constrsAddedSinceUpdate = []
+
+        for i in sorted(self.varsRemovedSinceUpdate, reverse=True):
+            voc = <Var>self.vars[i]
+            voc.index = -3
+            del self.vars[i]
+            for voc in self.vars[i:]:
+                voc.index -= 1
+            numVars -= 1
+        self.varsRemovedSinceUpdate = []
+
+        for i in sorted(self.constrsRemovedSinceUpdate, reverse=True):
+            voc = <Constr>self.constrs[i]
+            voc.index = -3
+            del self.constrs[i]
+            for voc in self.constrs[i:]:
+                voc.index -= 1
+            numConstrs -= 1
+        self.constrsRemovedSinceUpdate = []
+
+        for i in range(len(self.constrsAddedSinceUpdate)):
+            voc = self.constrsAddedSinceUpdate[i]
+            voc.index = numConstrs + i
+            self.constrs.append(voc)
+        self.constrsAddedSinceUpdate = []
+
+        for i in range(self.numRangesAddedSinceUpdate):
+            range_var = Var(self, numVars + i)
+            self.vars.append(range_var)
+        numVars += self.numRangesAddedSinceUpdate
+        self.numRangesAddedSinceUpdate = 0
+
+        for i in range(len(self.varsAddedSinceUpdate)):
+            voc = self.varsAddedSinceUpdate[i]
+            voc.index = numVars + i
+            self.vars.append(voc)
+        self.varsAddedSinceUpdate = []
+
         self.needUpdate = False
 
     cpdef optimize(self, callback=None):
@@ -791,7 +800,6 @@ cdef class Model:
 
     cpdef terminate(self):
         GRBterminate(self.model)
-
 
     cpdef write(self, filename):
         if isinstance(filename, unicode):
