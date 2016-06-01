@@ -348,8 +348,6 @@ cdef class Model:
         self.constrCoeffs = array(__arrayCodeDbl, [0]*25)
         self.needUpdate = False
         self.callbackFn = None
-        self.linExprDict = <dict>defaultdict(float)
-        self.columnDict = <dict>defaultdict(float)
         if _create:
             self.error = GRBnewmodel(masterEnv, &self.model, _chars(name),
                                      0, NULL, NULL, NULL, NULL, NULL)
@@ -513,20 +511,20 @@ cdef class Model:
         cdef int i, j, numRows
         cdef double coeff
         cdef Constr constr
-        self.columnDict.clear()
+        cdef dict columnDict = <dict>defaultdict(float)
         for (coeff, constr) in column.terms:
             constr = <Constr>constr
             if constr.index < 0:
                 raise GurobiError('Constraint not in model')
-            self.columnDict[constr.index] += coeff
+            columnDict[constr.index] += coeff
 
-        numRows = len(self.columnDict)
+        numRows = len(columnDict)
         if len(self.constrInds) < numRows:
             c_array.resize(self.constrInds, numRows)
             c_array.resize(self.constrCoeffs, numRows)
         c_array.zero(self.constrCoeffs)
 
-        for i, (index, coeff) in enumerate(self.columnDict.items()):
+        for i, (index, coeff) in enumerate(columnDict.items()):
             self.constrInds[i] = index
             self.constrCoeffs[i] = coeff
         return numRows
@@ -541,14 +539,14 @@ cdef class Model:
         cdef Var var
         cdef c_array.array[int] varInds
         cdef c_array.array[double] varCoeffs
-        self.linExprDict.clear()
+        cdef dict linExprDict = <dict>defaultdict(float)
         for (coeff, var) in expr.terms:
             var = <Var>var
             if var.index < 0:
                 raise GurobiError('Variable not in model')
-            self.linExprDict[var.index] += coeff
+            linExprDict[var.index] += coeff
 
-        numVars = len(self.linExprDict)
+        numVars = len(linExprDict)
         if len(self.varInds) < numVars:
             c_array.resize(self.varInds, numVars)
             c_array.resize(self.varCoeffs, numVars)
@@ -556,7 +554,7 @@ cdef class Model:
         varInds = self.varInds
         varCoeffs = self.varCoeffs
 
-        for i, (j, coeff) in enumerate(self.linExprDict.items()):
+        for i, (j, coeff) in enumerate(linExprDict.items()):
             varInds[i] = j
             varCoeffs[i] = coeff
         return numVars

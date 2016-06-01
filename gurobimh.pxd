@@ -53,8 +53,6 @@ cdef class Model:
     cdef int numRangesAddedSinceUpdate
     cdef array.array varInds, varCoeffs
     cdef array.array constrInds, constrCoeffs
-    cdef dict linExprDict
-    cdef dict columnDict
     # callback handling
     cdef object callbackFn
     cdef void *cbData
