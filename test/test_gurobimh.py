@@ -317,6 +317,48 @@ class GurobiMHTest(unittest.TestCase):
         m.optimize()
         self.assertEqual(constr.getAttr('RHS'), -1)
 
+    def test_column(self):
+        m = grb.Model()
+        constrs = [m.addConstr(0, 'L', 0) for i in range(10)]
+        m.update()
+        col = grb.Column([1, 5, 9], [constrs[0], constrs[2], constrs[4]])
+        self.assertEqual(col.getCoeff(0), 1); self.assertEqual(col.getConstr(0), constrs[0])
+        self.assertEqual(col.getCoeff(1), 5); self.assertEqual(col.getConstr(1), constrs[2])
+        self.assertEqual(col.getCoeff(2), 9); self.assertEqual(col.getConstr(2), constrs[4])
+
+        col.addTerms(-1, constrs[1])
+        self.assertEqual(col.getCoeff(3), -1); self.assertEqual(col.getConstr(3), constrs[1])
+
+        col.addTerms([10, 100], [constrs[8], constrs[9]])
+        self.assertEqual(col.getCoeff(4), 10); self.assertEqual(col.getConstr(4), constrs[8])
+        self.assertEqual(col.getCoeff(5), 100); self.assertEqual(col.getConstr(5), constrs[9])
+
+    def test_column_repeated_rows(self):
+        m = grb.Model()
+        m.setParam('OutputFlag', 0)
+        for i in range(1, 10):
+            for j in range(1, 10):
+                constr = m.addConstr(0, 'G', i)
+                m.update()
+                column = grb.Column([1]*j, [constr]*j)
+                var = m.addVar(column=column)
+                m.update()
+                m.setObjective(var)
+                m.optimize()
+                self.assertAlmostEqual(var.X, float(i)/float(j))
+
+    def test_linexpr_repeated_vars(self):
+        m = grb.Model()
+        m.setParam('OutputFlag', 0)
+        for i in range(1, 10):
+            for j in range(1, 10):
+                var = m.addVar()
+                m.update()
+                m.addConstr(grb.quicksum([var]*j) >= i)
+                m.setObjective(var)
+                m.optimize()
+                self.assertAlmostEqual(var.X, float(i)/float(j))
+
 
 if __name__ == '__main__':
     m = grb.Model()

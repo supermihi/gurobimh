@@ -18,13 +18,15 @@ cdef class Constr(VarOrConstr):
 
 
 cdef class Column:
-    cdef int numnz
     cdef array.array coeffs
     cdef list constrs
+    cpdef int size(Column self)
+    cpdef double getCoeff(Column self, int i)
+    cpdef Constr getConstr(Column self, int i)
+    cpdef addTerms(Column self, coeffs, constrs)
 
 
 cdef class LinExpr:
-    cdef int length
     cdef list vars
     cdef array.array coeffs
     cdef double constant
@@ -50,7 +52,9 @@ cdef class Model:
     cdef bint needUpdate
     cdef int numRangesAddedSinceUpdate
     cdef array.array varInds, varCoeffs
-    cdef dict linExpDct
+    cdef array.array constrInds, constrCoeffs
+    cdef dict linExprDict
+    cdef dict columnDict
     # callback handling
     cdef object callbackFn
     cdef void *cbData
@@ -58,7 +62,7 @@ cdef class Model:
     cdef bint cbInterrupt
     # internal helpers
     cdef int compressLinExpr(self, LinExpr expr) except -1
-
+    cdef int compressColumn(self, Column col) except -1
 
     # =======================
     # public Cython interface
