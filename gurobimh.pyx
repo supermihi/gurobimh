@@ -242,6 +242,8 @@ cdef class VarOrConstr:
             raise GurobiError('{} not yet added to the model'.format(self.__class__.__name__))
         return self.model.getElementAttr(_chars(key), self.index)
 
+    getAttr = __getattr__
+
     def __setattr__(self, key, value):
         if key[0] == '_':
             self.attrs[key] = value
@@ -249,6 +251,8 @@ cdef class VarOrConstr:
             raise GurobiError('{} not yet added to the model'.format(self.__class__.__name__))
         else:
             self.model.setElementAttr(_chars(key), self.index, value)
+
+    setAttr = __setattr__
 
     def __str__(self):
         ret = '<gurobimh.{} '.format(type(self).__name__)

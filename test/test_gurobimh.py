@@ -300,6 +300,23 @@ class GurobiMHTest(unittest.TestCase):
                 self.assertAlmostEqual(m.ObjVal, float(ub)/scale)
                 self.assertAlmostEqual(constr.Pi, 1.0/scale)
 
+    def test_get_set_attr(self):
+        m = grb.Model()
+        var = m.addVar()
+        constr = m.addConstr(0, 'L', 0)
+        m.update()
+
+        var.setAttr('LB', 100)
+        m.optimize()
+        self.assertEqual(var.LB, 100)
+        self.assertEqual(var.getAttr('LB'), 100)
+        self.assertEqual(var.getAttr('UB'), grb.GRB.INFINITY)
+
+        constr.setAttr('rhs', -1)
+        self.assertEqual(constr.RHS, 0)
+        m.optimize()
+        self.assertEqual(constr.getAttr('RHS'), -1)
+
 
 if __name__ == '__main__':
     m = grb.Model()
