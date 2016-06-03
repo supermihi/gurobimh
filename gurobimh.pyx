@@ -990,6 +990,7 @@ cdef class LinExpr:
     cdef int multiplyInplace(LinExpr expr, double scalar) except -1:
         for i in range(len(expr.coeffs)):
             expr.coeffs.data.as_doubles[i] *= scalar
+        expr.constant *= scalar
 
     cdef LinExpr copy(LinExpr self):
         cdef LinExpr result = LinExpr(self.constant)

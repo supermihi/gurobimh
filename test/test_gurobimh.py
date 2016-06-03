@@ -359,6 +359,19 @@ class GurobiMHTest(unittest.TestCase):
                 m.optimize()
                 self.assertAlmostEqual(var.X, float(i)/float(j))
 
+    def test_linexpr_neg_with_constant(self):
+        for n in range(10):
+            m = grb.Model()
+            m.setParam('OutputFlag', 0)
+            x = m.addVar()
+            y = m.addVar()
+            m.update()
+            expr = -n - x
+            m.addConstr(y >= -expr)
+            m.setObjective(x + y)
+            m.optimize()
+            self.assertAlmostEqual(m.ObjVal, n)
+
 
 if __name__ == '__main__':
     m = grb.Model()
