@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import gurobimh as grb
@@ -103,7 +104,7 @@ class GurobiMHTest(unittest.TestCase):
             self.assertAlmostEqual(constr.Slack, rc)
 
     def test_diet_read(self):
-        m = grb.read('./test/diet.lp')
+        m = grb.read(os.path.join('tests', 'diet.lp'))
         m.optimize()
         self.assertAlmostEqual(m.ObjVal, self.diet_cost)
         x = [m.getVarByName('x.' + str(i)) for i in range(1, 6)]

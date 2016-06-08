@@ -64,6 +64,7 @@ setup(
     license='GPL3',
     ext_modules=extensions,
     include_package_data=True,
+    test_suite='tests',
     install_requires=['Cython'],
     data_files=[('', ['gurobimh.pxd'])],
 )
