@@ -742,7 +742,7 @@ cdef class Model:
             raise GurobiError('Error resetting model: {}'.format(self.error))
 
     cpdef update(self):
-        cdef int numVars = self.NumVars, numConstrs = self.NumConstrs, i
+        cdef int numVars = self.NumVars, numConstrs = self.NumConstrs, i, numDeleted
         cdef VarOrConstr voc
         if not self.needUpdate:
             return
@@ -750,22 +750,36 @@ cdef class Model:
         if error:
             raise GurobiError('Error updating the model: {}'.format(self.error))
 
-        for i in sorted(self.varsRemovedSinceUpdate, reverse=True):
+        for i in self.varsRemovedSinceUpdate:
             voc = <Var>self.vars[i]
             voc.index = -3
-            del self.vars[i]
-            for voc in self.vars[i:]:
-                voc.index -= 1
             numVars -= 1
+        numDeleted = 0
+        for i in range(numVars):
+            voc = <Var>self.vars[i]
+            if voc.index == -3:
+                numDeleted += 1
+            self.vars[i] = self.vars[i + numDeleted]
+            voc = <Var>self.vars[i]
+            voc.index -= numDeleted
+        if numDeleted > 0:
+            del self.vars[-numDeleted:]
         self.varsRemovedSinceUpdate = []
 
-        for i in sorted(self.constrsRemovedSinceUpdate, reverse=True):
+        for i in self.constrsRemovedSinceUpdate:
             voc = <Constr>self.constrs[i]
             voc.index = -3
-            del self.constrs[i]
-            for voc in self.constrs[i:]:
-                voc.index -= 1
             numConstrs -= 1
+        numDeleted = 0
+        for i in range(numConstrs):
+            voc = <Constr>self.constrs[i]
+            if voc.index == -3:
+                numDeleted += 1
+            self.constrs[i] = self.constrs[i + numDeleted]
+            voc = <Constr>self.constrs[i]
+            voc.index -= numDeleted
+        if numDeleted > 0:
+            del self.constrs[-numDeleted:]
         self.constrsRemovedSinceUpdate = []
 
         for i in range(len(self.constrsAddedSinceUpdate)):

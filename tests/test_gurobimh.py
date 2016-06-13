@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import gurobimh as grb
@@ -103,7 +104,7 @@ class GurobiMHTest(unittest.TestCase):
             self.assertAlmostEqual(constr.Slack, rc)
 
     def test_diet_read(self):
-        m = grb.read('./test/diet.lp')
+        m = grb.read(os.path.join('tests', 'diet.lp'))
         m.optimize()
         self.assertAlmostEqual(m.ObjVal, self.diet_cost)
         x = [m.getVarByName('x.' + str(i)) for i in range(1, 6)]
@@ -371,6 +372,52 @@ class GurobiMHTest(unittest.TestCase):
             m.setObjective(x + y)
             m.optimize()
             self.assertAlmostEqual(m.ObjVal, n)
+
+    def test_remove_var(self):
+        m = grb.Model()
+        v0 = m.addVar(obj=1)
+        v1 = m.addVar(obj=2)
+        m.update()
+        m.addConstr(v0 + v1 >= 10.0)
+        m.update()
+        m.optimize()
+        self.assertAlmostEqual(v0.X, 10.0)
+        self.assertAlmostEqual(v1.X, 0.0)
+        m.remove(v0)
+        m.update()
+        m.optimize()
+        self.assertAlmostEqual(v1.X, 10.0)
+
+    def test_remove_constr(self):
+        m = grb.Model()
+        v0 = m.addVar(obj=1)
+        v1 = m.addVar(obj=2)
+        m.update()
+        c0 = m.addConstr(v0 + v1 >= 30.0)
+        c1 = m.addConstr(v0 + v1 >= 20.0)
+        m.update()
+        m.optimize()
+        self.assertAlmostEqual(v0.X, 30.0)
+        self.assertAlmostEqual(v1.X, 0.0)
+        self.assertAlmostEqual(c0.Pi, 1)
+        self.assertAlmostEqual(c1.Pi, 0)
+        m.remove(c0)
+        m.update()
+        m.optimize()
+        self.assertAlmostEqual(v0.X, 20.0)
+        self.assertAlmostEqual(v1.X, 0)
+        self.assertAlmostEqual(c1.Pi, 1)
+
+    def test_remove_performance(self):
+        m = grb.Model()
+        num_vars = 100000
+        num_vars_deleted = num_vars // 2
+        dvars = [m.addVar(name="x.%i" % i) for i in range(num_vars)]
+        m.update()
+        for dvar in dvars[:num_vars_deleted]:
+            m.remove(dvar)
+        m.update()
+        self.assertEqual(m.numVars, num_vars - num_vars_deleted)
 
 
 if __name__ == '__main__':
