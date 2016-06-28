@@ -417,7 +417,9 @@ class GurobiMHTest(unittest.TestCase):
         for dvar in dvars[:num_vars_deleted]:
             m.remove(dvar)
         m.update()
-        self.assertEqual(m.numVars, num_vars - num_vars_deleted)
+        m.addVar()
+        m.update()
+        self.assertEqual(m.numVars, num_vars - num_vars_deleted + 1)
 
 
 if __name__ == '__main__':

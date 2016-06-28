@@ -71,20 +71,50 @@ cdef class CallbackClass:
     cdef:
         readonly int MIPNODE
         readonly int SIMPLEX
+        readonly int POLLING
+        readonly int PRESOLVE
+        readonly int MIP
+        readonly int MIPSOL
+        readonly int MESSAGE
+        readonly int BARRIER
 
         readonly int MIPNODE_OBJBST
         readonly int SPX_OBJVAL
+        readonly int MIPSOL_NODCNT
+        readonly int MIP_OBJBND
+        readonly int MIP_SOLCNT
+        readonly int MIP_NODCNT
+        readonly int MIP_OBJBST
+        readonly int RUNTIME
         #TODO: insert missing callback WHATs
 
     def __init__(self):
         self.MIPNODE = GRB_CB_MIPNODE
         self.SIMPLEX = GRB_CB_SIMPLEX
+        self.POLLING = GRB_CB_POLLING
+        self.PRESOLVE = GRB_CB_PRESOLVE
+        self.MIP = GRB_CB_MIP
+        self.MIPSOL = GRB_CB_MIPSOL
+        self.MESSAGE = GRB_CB_MESSAGE
+        self.BARRIER = GRB_CB_BARRIER
 
         self.MIPNODE_OBJBST = GRB_CB_MIPNODE_OBJBST
         self.SPX_OBJVAL = GRB_CB_SPX_OBJVAL
+        self.MIPSOL_NODCNT = GRB_CB_MIPSOL_NODCNT
+        self.MIP_OBJBND = GRB_CB_MIP_OBJBND
+        self.MIP_SOLCNT = GRB_CB_MIP_SOLCNT
+        self.MIP_NODCNT = GRB_CB_MIP_NODCNT
+        self.MIP_OBJBST = GRB_CB_MIP_OBJBST
+        self.RUNTIME = GRB_CB_RUNTIME
+
         CallbackTypes[self.MIPNODE_OBJBST] = float
         CallbackTypes[self.SPX_OBJVAL] = float
-
+        CallbackTypes[self.MIPSOL_NODCNT] = float
+        CallbackTypes[self.MIP_OBJBND] = float
+        CallbackTypes[self.MIP_SOLCNT] = int
+        CallbackTypes[self.MIP_NODCNT] = float
+        CallbackTypes[self.MIP_OBJBST] = float
+        CallbackTypes[self.RUNTIME] = float
 
 
 # === ATTRIBUTES AND PARAMETERS ===
@@ -129,7 +159,7 @@ cdef list StrParams = []
 # tolerances
 DblParams += ['FeasibilityTol', 'IntFeasTol', 'MIPGap', 'MIPGapAbs', 'OptimalityTol']
 # simplex
-IntParams += ['Method']
+IntParams += ['Method', 'InfUnbdInfo']
 # MIP
 IntParams += ['MIPFocus', 'VarBranch']
 # cuts
@@ -744,48 +774,40 @@ cdef class Model:
     cpdef update(self):
         cdef int numVars = self.NumVars, numConstrs = self.NumConstrs, i, numDeleted
         cdef VarOrConstr voc
+        cdef int index
         if not self.needUpdate:
             return
         error = GRBupdatemodel(self.model)
         if error:
             raise GurobiError('Error updating the model: {}'.format(self.error))
 
-        for i in self.varsRemovedSinceUpdate:
-            voc = <Var>self.vars[i]
-            voc.index = -3
-            numVars -= 1
-        numDeleted = 0
-        for i in range(numVars):
-            voc = <Var>self.vars[i]
-            if voc.index == -3:
-                numDeleted += 1
-            self.vars[i] = self.vars[i + numDeleted]
-            voc = <Var>self.vars[i]
-            voc.index -= numDeleted
-        if numDeleted > 0:
-            del self.vars[-numDeleted:]
+        if self.varsRemovedSinceUpdate:
+            for i in self.varsRemovedSinceUpdate:
+                voc = <Var>self.vars[i]
+                voc.index = -3
+                numVars -= 1
+
+            self.vars = [var for var in self.vars if (<Var>var).index != -3]
+            for index, var in enumerate(self.vars):
+                var.index = index
+
         self.varsRemovedSinceUpdate = []
 
-        for i in self.constrsRemovedSinceUpdate:
-            voc = <Constr>self.constrs[i]
-            voc.index = -3
-            numConstrs -= 1
-        numDeleted = 0
-        for i in range(numConstrs):
-            voc = <Constr>self.constrs[i]
-            if voc.index == -3:
-                numDeleted += 1
-            self.constrs[i] = self.constrs[i + numDeleted]
-            voc = <Constr>self.constrs[i]
-            voc.index -= numDeleted
-        if numDeleted > 0:
-            del self.constrs[-numDeleted:]
+        if self.constrsRemovedSinceUpdate:
+            for i in self.constrsRemovedSinceUpdate:
+                voc = <Constr>self.constrs[i]
+                voc.index = -3
+                numConstrs -= 1
+
+            self.constrs = [constr for constr in self.constrs if (<Constr>constr).index != -3]
+            for index, constr in enumerate(self.constrs):
+                constr.index = index
+            
         self.constrsRemovedSinceUpdate = []
 
-        for i in range(len(self.constrsAddedSinceUpdate)):
-            voc = self.constrsAddedSinceUpdate[i]
-            voc.index = numConstrs + i
-            self.constrs.append(voc)
+        for i, constr in enumerate(self.constrsAddedSinceUpdate):
+            constr.index = numConstrs + i
+        self.constrs.update(self.constrsAddedSinceUpdate)
         self.constrsAddedSinceUpdate = []
 
         for i in range(self.numRangesAddedSinceUpdate):
@@ -794,10 +816,9 @@ cdef class Model:
         numVars += self.numRangesAddedSinceUpdate
         self.numRangesAddedSinceUpdate = 0
 
-        for i in range(len(self.varsAddedSinceUpdate)):
-            voc = self.varsAddedSinceUpdate[i]
+        for i, var in enumerate(self.varsAddedSinceUpdate):
             voc.index = numVars + i
-            self.vars.append(voc)
+        self.vars.update(self.varsAddedSinceUpdate)
         self.varsAddedSinceUpdate = []
 
         self.needUpdate = False
@@ -822,8 +843,8 @@ cdef class Model:
             raise KeyboardInterrupt()
 
     cpdef cbGet(self, int what):
-        cdef int intResult
-        cdef double dblResult = 0
+        cdef int intResult = -1
+        cdef double dblResult = -1
         if what not in CallbackTypes:
             raise GurobiError('Unknown callback "what" requested: {}'.format(what))
         elif CallbackTypes[what] is int:
