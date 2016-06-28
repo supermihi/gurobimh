@@ -532,7 +532,7 @@ cdef class Model:
                                    self.constrCoeffs.data.as_doubles, obj, lb, ub, vtype, name)
         if self.error:
             raise GurobiError('Error creating variable: {}'.format(self.error))
-        var = Var(self, -1)
+        var = Var(self, len(self.vars) + len(self.varsAddedSinceUpdate))
         self.varsAddedSinceUpdate.append(var)
         self.needUpdate = True
         return var
@@ -596,7 +596,7 @@ cdef class Model:
                                        _chars(name))
         if self.error:
             raise GurobiError('Error adding range constraint: {}'.format(self.error))
-        constr = Constr(self, -1)
+        constr = Constr(self, len(self.constrs) + len(self.constrsAddedSinceUpdate))
         self.constrsAddedSinceUpdate.append(constr)
         self.numRangesAddedSinceUpdate += 1
         self.needUpdate = True
@@ -622,7 +622,7 @@ cdef class Model:
                                   -expr.constant, _chars(name))
         if self.error:
             raise GurobiError('Error adding constraint: {}'.format(self.error))
-        constr = Constr(self, -1)
+        constr = Constr(self, len(self.constrs) + len(self.constrsAddedSinceUpdate))
         self.constrsAddedSinceUpdate.append(constr)
         self.needUpdate = True
         return constr
@@ -783,31 +783,31 @@ cdef class Model:
 
         if self.varsRemovedSinceUpdate:
             for i in self.varsRemovedSinceUpdate:
-                voc = <Var>self.vars[i]
+                voc = <VarOrConstr>self.vars[i]
                 voc.index = -3
                 numVars -= 1
 
             self.vars = [var for var in self.vars if (<Var>var).index != -3]
             for index, var in enumerate(self.vars):
-                var.index = index
+                (<VarOrConstr>var).index = index
 
         self.varsRemovedSinceUpdate = []
 
         if self.constrsRemovedSinceUpdate:
             for i in self.constrsRemovedSinceUpdate:
-                voc = <Constr>self.constrs[i]
+                voc = <VarOrConstr>self.constrs[i]
                 voc.index = -3
                 numConstrs -= 1
 
             self.constrs = [constr for constr in self.constrs if (<Constr>constr).index != -3]
             for index, constr in enumerate(self.constrs):
-                constr.index = index
+                (<VarOrConstr>constr).index = index
             
         self.constrsRemovedSinceUpdate = []
 
-        for i, constr in enumerate(self.constrsAddedSinceUpdate):
-            constr.index = numConstrs + i
-        self.constrs.update(self.constrsAddedSinceUpdate)
+        for i, voc in enumerate(self.constrsAddedSinceUpdate):
+            (<VarOrConstr>voc).index = numConstrs + i
+        self.constrs.extend(self.constrsAddedSinceUpdate)
         self.constrsAddedSinceUpdate = []
 
         for i in range(self.numRangesAddedSinceUpdate):
@@ -816,9 +816,9 @@ cdef class Model:
         numVars += self.numRangesAddedSinceUpdate
         self.numRangesAddedSinceUpdate = 0
 
-        for i, var in enumerate(self.varsAddedSinceUpdate):
-            voc.index = numVars + i
-        self.vars.update(self.varsAddedSinceUpdate)
+        for i, voc in enumerate(self.varsAddedSinceUpdate):
+            (<VarOrConstr>voc).index = numVars + i
+        self.vars.extend(self.varsAddedSinceUpdate)
         self.varsAddedSinceUpdate = []
 
         self.needUpdate = False
