@@ -827,7 +827,7 @@ cdef class Model:
         if what not in CallbackTypes:
             raise GurobiError('Unknown callback "what" requested: {}'.format(what))
         elif CallbackTypes[what] is int:
-            self.error = GRBcbget(self.model, self.cbWhere, what, <void*> &intResult)
+            self.error = GRBcbget(self.cbData, self.cbWhere, what, <void*> &intResult)
             if self.error:
                 raise GurobiError('Error calling cbget: {}'.format(self.error))
             return intResult
