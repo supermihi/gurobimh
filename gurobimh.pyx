@@ -121,7 +121,7 @@ cdef class CallbackClass:
 #
 # model attrs
 #TODO: insert missing attributes and parameters
-cdef list IntAttrs = ['NumConstrs', 'NumVars', 'ModelSense', 'IsMIP', 'NumNZs', 'NumIntVars', 'NumBinVars',
+cdef list IntAttrs = ['NumConstrs', 'NumVars', 'NumSOS', 'ModelSense', 'IsMIP', 'NumNZs', 'NumIntVars', 'NumBinVars',
                       'NumPWLObjVars', 'SolCount', 'IterCount', 'BarIterCount', 'NodeCount']
 cdef list StrAttrs = ['ModelName']
 cdef list DblAttrs = ['ObjCon', 'Runtime']
@@ -196,6 +196,9 @@ cdef class GRBcls:
         # constraint senses
         readonly basestring LESS_EQUAL, EQUAL, GREATER_EQUAL
         readonly object Callback, callback, Param, param, Attr, attr, status
+
+        readonly int SOS_TYPE1, SOS_TYPE2
+
     # workaround: INFINITY class member clashes with gcc macro INFINITY
     property INFINITY:
         def __get__(self):
@@ -214,6 +217,9 @@ cdef class GRBcls:
 
         self.MAXIMIZE = GRB_MAXIMIZE
         self.MINIMIZE = GRB_MINIMIZE
+
+        self.SOS_TYPE1 = GRB_SOS_TYPE1
+        self.SOS_TYPE2 = GRB_SOS_TYPE2
 
         self.status.INFEASIBLE = self.INFEASIBLE = GRB_INFEASIBLE
         self.status.OPTIMAL = self.OPTIMAL = GRB_OPTIMAL
@@ -338,6 +344,9 @@ cdef class Constr(VarOrConstr):
             return self.model.getElementDblAttr(b'Slack', self.index)
 
 
+cdef class SOS(VarOrConstr):
+    pass
+
 
 cdef char* _chars(s):
     """Convert input string to bytes, no matter if *s* is unicode or bytestring"""
@@ -367,10 +376,13 @@ cdef class Model:
         self.attrs = {}
         self.vars = []
         self.constrs = []
+        self.sos = []
         self.varsAddedSinceUpdate = []
         self.varsRemovedSinceUpdate = []
         self.constrsAddedSinceUpdate = []
         self.constrsRemovedSinceUpdate = []
+        self.sosAddedSinceUpdate = []
+        self.sosRemovedSinceUpdate = []
         self.numRangesAddedSinceUpdate = 0
         self.varInds = array(__arrayCodeInt, [0]*25)
         self.varCoeffs = array(__arrayCodeDbl, [0]*25)
@@ -571,7 +583,6 @@ cdef class Model:
         cdef c_array.array[double] varCoeffs
         cdef dict linExprDict = <dict>defaultdict(float)
         for (coeff, var) in expr.terms:
-            var = <Var>var
             if var.index < 0:
                 raise GurobiError('Variable not in model')
             linExprDict[var.index] += coeff
@@ -601,6 +612,36 @@ cdef class Model:
         self.numRangesAddedSinceUpdate += 1
         self.needUpdate = True
         return constr
+
+    cpdef addSOS(self, int type, vars, weights=None):
+        cdef c_array.array[int] ind, types, beg
+        cdef c_array.array[double] weight
+        cdef Var var
+        cdef int numVars = len(vars)
+
+        ind = array(__arrayCodeInt, [0]*numVars)
+        types = array(__arrayCodeInt, [type])
+        beg = array(__arrayCodeInt, [0])
+        
+        if weights is not None:
+            weight = array(__arrayCodeDbl, weights)
+        else:
+            weight = array(__arrayCodeDbl, [1]*numVars)
+
+        for i, var in enumerate(vars):
+            if var.index < 0:
+                raise GurobiError('Variable not in model')
+            ind[i] = var.index
+
+        self.error = GRBaddsos(self.model, 1, numVars, types.data.as_ints,
+                               beg.data.as_ints, ind.data.as_ints, weight.data.as_doubles)
+        if self.error:
+            raise GurobiError('Error adding SOS: {}'.format(self.error))
+
+        sos = SOS(self, -1)
+        self.sosAddedSinceUpdate.append(sos)
+        self.needUpdate = True
+        return sos
 
     cpdef addConstr(self, lhs, basestring sense=None, rhs=None, name=''):
         cdef LinExpr expr
@@ -757,11 +798,19 @@ cdef class Model:
                 if self.error != 0:
                     raise GurobiError('Error removing constraint: {}'.format(self.error))
                 self.constrsRemovedSinceUpdate.append(what.index)
-            else:
+            elif isinstance(what, Var):
                 self.error = GRBdelvars(self.model, 1, &what.index)
                 if self.error:
                     raise GurobiError('Error removing variable: {}'.format(self.error))
                 self.varsRemovedSinceUpdate.append(what.index)
+            elif isinstance(what, SOS):
+                self.error = GRBdelsos(self.model, 1, &what.index)
+                print("Removing SOS with index =", what.index)
+                if self.error:
+                    raise GurobiError('Error removing SOS: {}'.format(self.error))
+                self.sosRemovedSinceUpdate.append(what.index)
+            else:
+                raise GurobiError('Item to be removed not a Var, Constr, SOS, or QConstr')
             what.index = -2
             self.needUpdate = True
 
@@ -773,6 +822,7 @@ cdef class Model:
 
     cpdef update(self):
         cdef int numVars = self.NumVars, numConstrs = self.NumConstrs, i, numDeleted
+        cdef int numSOS = self.NumSOS
         cdef VarOrConstr voc
         cdef int index
         if not self.needUpdate:
@@ -786,11 +836,9 @@ cdef class Model:
                 voc = <VarOrConstr>self.vars[i]
                 voc.index = -3
                 numVars -= 1
-
             self.vars = [var for var in self.vars if (<Var>var).index != -3]
             for index, var in enumerate(self.vars):
                 (<VarOrConstr>var).index = index
-
         self.varsRemovedSinceUpdate = []
 
         if self.constrsRemovedSinceUpdate:
@@ -798,17 +846,25 @@ cdef class Model:
                 voc = <VarOrConstr>self.constrs[i]
                 voc.index = -3
                 numConstrs -= 1
-
             self.constrs = [constr for constr in self.constrs if (<Constr>constr).index != -3]
             for index, constr in enumerate(self.constrs):
                 (<VarOrConstr>constr).index = index
-            
         self.constrsRemovedSinceUpdate = []
 
         for i, voc in enumerate(self.constrsAddedSinceUpdate):
             (<VarOrConstr>voc).index = numConstrs + i
         self.constrs.extend(self.constrsAddedSinceUpdate)
         self.constrsAddedSinceUpdate = []
+
+        if self.sosRemovedSinceUpdate:
+            for i in self.sosRemovedSinceUpdate:
+                voc = <VarOrConstr>self.sos[i]
+                voc.index = -3
+                numSOS -= 1
+            self.sos = [sos for sos in self.sos if (<SOS>sos).index != -3]
+            for index, sos in enumerate(self.sos):
+                (<SOS>sos).index = index
+        self.sosRemovedSinceUpdate = []
 
         for i in range(self.numRangesAddedSinceUpdate):
             range_var = Var(self, numVars + i)
@@ -820,6 +876,11 @@ cdef class Model:
             (<VarOrConstr>voc).index = numVars + i
         self.vars.extend(self.varsAddedSinceUpdate)
         self.varsAddedSinceUpdate = []
+
+        for i, voc in enumerate(self.sosAddedSinceUpdate):
+            (<VarOrConstr>voc).index = numSOS + i
+        self.sos.extend(self.sosAddedSinceUpdate)
+        self.sosAddedSinceUpdate = []
 
         self.needUpdate = False
 

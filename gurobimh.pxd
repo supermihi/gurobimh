@@ -49,6 +49,7 @@ cdef class Model:
     cdef dict attrs  # user attributes
     cdef list vars, varsAddedSinceUpdate, varsRemovedSinceUpdate
     cdef list constrs,  constrsAddedSinceUpdate, constrsRemovedSinceUpdate
+    cdef list sos, sosAddedSinceUpdate, sosRemovedSinceUpdate
     cdef bint needUpdate
     cdef int numRangesAddedSinceUpdate
     cdef array.array varInds, varCoeffs
@@ -85,6 +86,7 @@ cdef class Model:
     # =======================
     cpdef getAttr(self, char* attrname, objs=?)
     cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?, column=?)
+    cpdef addSOS(self, int type, vars, weights=?)
     cpdef addRange(self, LinExpr expr, double lower, double upper, name=?)
     cpdef addConstr(self, lhs, basestring sense=?, rhs=?, name=?)
     cpdef setObjective(self, expression, sense=*)
@@ -119,6 +121,9 @@ cdef extern from 'gurobi_c.h':
     const int GRB_INFEASIBLE, GRB_OPTIMAL, GRB_INTERRUPTED, GRB_ITERATION_LIMIT, GRB_INF_OR_UNBD,\
         GRB_UNBOUNDED, GRB_LOADED, GRB_CUTOFF, GRB_TIME_LIMIT, GRB_SOLUTION_LIMIT, GRB_NUMERIC,\
         GRB_SUBOPTIMAL, GRB_INPROGRESS
+
+    const int GRB_SOS_TYPE1, GRB_SOS_TYPE2
+
     const double GRB_INFINITY
     # callback "where"'s
     const int GRB_CB_POLLING, GRB_CB_PRESOLVE, GRB_CB_SIMPLEX, GRB_CB_MIP, GRB_CB_MIPSOL, \
@@ -160,8 +165,10 @@ cdef extern from 'gurobi_c.h':
     int GRBsetdblparam (GRBenv *, const char *paramname, double newvalue)
     int GRBupdatemodel (GRBmodel *)
     int GRBaddrangeconstr (GRBmodel *, int numnz, int *cind, double *cval, double lower, double upper, const char *constrname)
+    int GRBaddsos (GRBmodel *, int numsos, int nummembers, int *types, int *beg, int *ind, double * weight)
     int GRBaddconstr (GRBmodel *, int numnz, int *cind, double *cval, char sense, double rhs, const char *constrname)
     int GRBdelconstrs (GRBmodel *, int numdel, int *ind)
+    int GRBdelsos (GRBmodel *, int numdel, int *ind)
     int GRBgetvarbyname (GRBmodel *, const char *name, int *varnumP)
     int GRBgetconstrbyname (GRBmodel *, const char *name, int *constrnumP)
     int GRBchgcoeffs (GRBmodel *, int numchgs, int *cind, int *vind, double *val)

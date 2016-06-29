@@ -421,6 +421,38 @@ class GurobiMHTest(unittest.TestCase):
         m.update()
         self.assertEqual(m.numVars, num_vars - num_vars_deleted + 1)
 
+    def test_sos(self):
+        m = grb.Model()
+        x = m.addVar()
+        y = m.addVar()
+        m.update()
+
+        constr1 = m.addConstr(2*x + y <= 9)
+        sos1 = m.addSOS(GRB.SOS_TYPE1, [x, y])
+        constr2 = m.addConstr(x + y <= 6)
+        sos2 = m.addSOS(GRB.SOS_TYPE1, [x, y])
+
+        m.setObjective(6*x + 4*y, sense=GRB.MAXIMIZE)
+        m.optimize()
+
+        self.assertAlmostEqual(m.ObjVal, 27)
+        self.assertAlmostEqual(x.X, 4.5)
+        self.assertAlmostEqual(y.X, 0)
+
+        m.remove(sos1)
+        m.optimize()
+
+        self.assertAlmostEqual(m.ObjVal, 27)
+        self.assertAlmostEqual(x.X, 4.5)
+        self.assertAlmostEqual(y.X, 0)
+
+        m.remove(sos2)
+        m.optimize()
+
+        self.assertAlmostEqual(m.ObjVal, 30)
+        self.assertAlmostEqual(x.X, 3)
+        self.assertAlmostEqual(y.X, 3)
+
 
 if __name__ == '__main__':
     m = grb.Model()
