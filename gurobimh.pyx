@@ -20,7 +20,6 @@ DEF ERRORCODE = -987654321
 
 __version__ = '2016.1'
 
-
 if PY_MAJOR_VERSION >= 3:
     # workaround Py2/3 bytes/unicode issues
     __arrayCodeInt = 'i'
@@ -203,7 +202,7 @@ cdef class GRBcls:
         readonly int INFEASIBLE, OPTIMAL, INTERRUPTED, INF_OR_UNBD, UNBOUNDED, ITERATION_LIMIT
         readonly int LOADED, CUTOFF, TIME_LIMIT, SOLUTION_LIMIT, NUMERIC, SUBOPTIMAL, INPROGRESS
         # constraint senses
-        readonly basestring LESS_EQUAL, EQUAL, GREATER_EQUAL
+        readonly bytes LESS_EQUAL, EQUAL, GREATER_EQUAL
         readonly object Callback, callback, Param, param, Attr, attr, status
 
         readonly int SOS_TYPE1, SOS_TYPE2
@@ -662,7 +661,7 @@ cdef class Model:
         cdef char my_sense
         if isinstance(lhs, TempConstr):
             expr = (<TempConstr>lhs).lhs - (<TempConstr>lhs).rhs
-            if name == '' and sense is not None:
+            if len(name) == 0 and sense is not None:
                 name = sense
             my_sense = (<TempConstr>lhs).sense
         else:
