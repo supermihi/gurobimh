@@ -25,6 +25,12 @@ Of course, there are also disatvantages:
   there are probably lots of bugs, and of course there's no commercial support. Don't use in
   productive environments!
 
+News
+----
+
+* June 2016: Large update contributed by [mikenehme](https://github.com/mikenehme), many thanks for your help!!
+
+
 Requirements
 ------------
 The API is written in [Python](www.python.org). To compile it, you need [Cython](www.cython.org). Of
@@ -52,4 +58,4 @@ Simply replace any `gurobipy` import statements with `gurobimh`. If anything goe
 
 Contact
 -------
-Please contact [me](helmling@uni-koblenz.de) or use the GitHub features for comments, bugs etc.
+Please contact [me](michaelhelmling@posteo.de) or use the GitHub features for PRs, comments, bugs etc.

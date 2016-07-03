@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2015 Michael Helmling
+# Copyright 2015 - 2016 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
@@ -60,7 +60,7 @@ setup(
     description='alternative python interface for the Gurobi optimization software',
     long_description=readme(),
     author='Michael Helmling',
-    author_email='helmling@uni-koblenz.de',
+    author_email='michaelhelmling@posteo.de',
     license='GPL3',
     ext_modules=extensions,
     include_package_data=True,

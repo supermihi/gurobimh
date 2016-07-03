@@ -4,7 +4,7 @@
 # cython: wraparound=False
 # cython: initializedcheck=False
 # cython: language_level = 3
-# Copyright 2015 Michael Helmling
+# Copyright 2015 - 2016 Michael Helmling
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as
@@ -13,16 +13,25 @@
 from numbers import Number
 from cpython cimport array as c_array
 from array import array
-from collections import defaultdict
-import itertools
-import sys
+from cpython cimport PY_MAJOR_VERSION
 # somewhat ugly hack: attribute getters/setters use this special return value to indicate a python
 # exception; saves us from having to return objects while still allowing error handling
 DEF ERRORCODE = -987654321
 
-__version__ = '2015.2'
-__arrayCodeInt = b'i' if sys.version_info.major == 2 else 'i'  # workaround bytes/unicode issues
-__arrayCodeDbl = b'd' if sys.version_info.major == 2 else 'd'  # in Py2/3
+__version__ = '2016.1'
+
+
+if PY_MAJOR_VERSION >= 3:
+    # workaround Py2/3 bytes/unicode issues
+    __arrayCodeInt = 'i'
+    __arrayCodeDbl = 'd'
+    # zip/izip issue
+    izip = zip
+else:
+    __arrayCodeInt = b'i'
+    __arrayCodeDbl = b'd'
+    import itertools
+    izip = itertools.izip
 
 
 class GurobiError(Exception):
@@ -206,7 +215,7 @@ cdef class GRBcls:
 
     def __init__(self):
         self.status = type(
-            'StatusConstClass' if sys.version_info.major == 3 else b'StatusConstClass',
+            'StatusConstClass' if PY_MAJOR_VERSION >= 3 else b'StatusConstClass',
             (),
             {})
         self.BINARY = GRB_BINARY
@@ -352,7 +361,7 @@ cdef char* _chars(s):
     """Convert input string to bytes, no matter if *s* is unicode or bytestring"""
     if isinstance(s, unicode):
         # encode to the specific encoding used inside of the module
-        s = (<unicode>s).encode('utf8')
+        return (<unicode>s).encode('utf8')
     return s
 
 
@@ -415,17 +424,15 @@ cdef class Model:
         if key[0] == '_':
             self.attrs[key] = value
         else:
-            lAttr = key.lower()
+            lAttr = _chars(key).lower()
             if lAttr in StrAttrsLower:
-                GRBsetstrattr(self.model, key, value)
+                GRBsetstrattr(self.model, lAttr, _chars(value))
             elif lAttr in IntAttrsLower:
-                GRBsetintattr(self.model, key, value)
+                GRBsetintattr(self.model, lAttr, value)
             else:
                 raise AttributeError('Unknown model attribute: {}'.format(attr))
 
     def __getattr__(self, attr):
-        cdef int intValue
-        cdef double dblValue
         cdef bytes lAttr = _chars(attr).lower()
         if lAttr in IntAttrsLower:
             return self.getIntAttr(lAttr)
@@ -458,12 +465,12 @@ cdef class Model:
             raise GurobiError('Error retrieving double attribute: {}'.format(self.error))
         return value
 
-    cdef char* getStrAttr(self, char *attrname):
+    cdef unicode getStrAttr(self, char *attrname):
         cdef char* value
         self.error = GRBgetstrattr(self.model, attrname, &value)
         if self.error:
             raise GurobiError('Error retrieving str attribute: {}'.format(self.error))
-        return value
+        return value.decode('UTF8')
 
     cdef double getElementDblAttr(self, char *attr, int element) except ERRORCODE:
         """Fast retrieval of double attributes."""
@@ -498,7 +505,7 @@ cdef class Model:
             self.error = GRBgetstrattrelement(self.model, lAttr, element, &strValue)
             if self.error:
                 raise GurobiError('Error retrieving str attr: {}'.format(self.error))
-            return str(strValue)
+            return strValue.decode('UTF8')
         else:
             raise AttributeError(attr)
 
@@ -534,14 +541,13 @@ cdef class Model:
         cdef Var var
         cdef c_array.array[int] vind
         cdef c_array.array[double] vval
-        if isinstance(name, unicode):
-            name = name.encode('utf8')
+        cdef char *cname = _chars(name)
         if column is None:
-            self.error = GRBaddvar(self.model, 0, NULL, NULL, obj, lb, ub, vtype, name)
+            self.error = GRBaddvar(self.model, 0, NULL, NULL, obj, lb, ub, vtype, cname)
         else:
             numnz = self.compressColumn(column)
             self.error = GRBaddvar(self.model, numnz, self.constrInds.data.as_ints,
-                                   self.constrCoeffs.data.as_doubles, obj, lb, ub, vtype, name)
+                                   self.constrCoeffs.data.as_doubles, obj, lb, ub, vtype, cname)
         if self.error:
             raise GurobiError('Error creating variable: {}'.format(self.error))
         var = Var(self, len(self.vars) + len(self.varsAddedSinceUpdate))
@@ -553,12 +559,15 @@ cdef class Model:
         cdef int i, j, numRows
         cdef double coeff
         cdef Constr constr
-        cdef dict columnDict = <dict>defaultdict(float)
+        cdef dict columnDict = dict()
         for (coeff, constr) in column.terms:
             constr = <Constr>constr
             if constr.index < 0:
                 raise GurobiError('Constraint not in model')
-            columnDict[constr.index] += coeff
+            if constr.index in columnDict:
+                columnDict[constr.index] += coeff
+            else:
+                columnDict[constr.index] = coeff
 
         numRows = len(columnDict)
         if len(self.constrInds) < numRows:
@@ -581,11 +590,14 @@ cdef class Model:
         cdef Var var
         cdef c_array.array[int] varInds
         cdef c_array.array[double] varCoeffs
-        cdef dict linExprDict = <dict>defaultdict(float)
+        cdef dict linExprDict = dict()
         for (coeff, var) in expr.terms:
             if var.index < 0:
                 raise GurobiError('Variable not in model')
-            linExprDict[var.index] += coeff
+            if var.index in linExprDict:
+                linExprDict[var.index] += coeff
+            else:
+                linExprDict[var.index] = coeff
 
         numVars = len(linExprDict)
         if len(self.varInds) < numVars:
@@ -951,7 +963,7 @@ cdef class Column:
 
     @property
     def terms(self):
-        return itertools.izip(self.coeffs, self.constrs)
+        return izip(self.coeffs, self.constrs)
 
     cpdef int size(Column self):
         return len(self.constrs)
@@ -1026,7 +1038,7 @@ cdef class LinExpr:
 
     @property
     def terms(self):
-        return itertools.izip(self.coeffs, self.vars)
+        return izip(self.coeffs, self.vars)
 
     cpdef int size(LinExpr self):
         return len(self.vars)

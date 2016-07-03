@@ -1,7 +1,8 @@
+#from __future__ import unicode_literals
 import os
 import unittest
-
 import gurobimh as grb
+
 GRB = grb.GRB
 
 
@@ -36,8 +37,8 @@ def get_knapsack_model_column(capacity, weights, values):
 class GurobiMHTest(unittest.TestCase):
     def test_simple_mip(self):
         m = grb.Model()
-        x = m.addVar(vtype=GRB.BINARY, name='x')
-        y = m.addVar(vtype=GRB.BINARY, name='y')
+        x = m.addVar(vtype=GRB.BINARY, name=b'x')
+        y = m.addVar(vtype=GRB.BINARY, name=u'y')
         z = m.addVar(vtype=GRB.BINARY, name='z')
         m.update()
         m.setObjective(x + y + 2 * z, GRB.MAXIMIZE)
@@ -123,14 +124,14 @@ class GurobiMHTest(unittest.TestCase):
         m.optimize()
         self.assertIsNotNone(m.getConstrByName('knapsack'))
         self.assertAlmostEqual(m.getConstrByName('knapsack').RHS, capacity)
-        solution = m.getAttr('X', item_selected)
+        solution = m.getAttr(b'X', item_selected)
         target_solution = [1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0.721739130435, 1, 1]
         for i, j in zip(solution, target_solution):
             self.assertAlmostEqual(i, j)
 
         m2, item_selected2 = get_knapsack_model_column(capacity, weights, values)
         m2.optimize()
-        solution = m2.getAttr('X', item_selected2)
+        solution = m2.getAttr(b'X', item_selected2)
         for i,j in zip(solution, target_solution):
             self.assertAlmostEqual(i, j)
         self.assertEqual(m2.ModelName, "knapsack_column")
@@ -138,7 +139,7 @@ class GurobiMHTest(unittest.TestCase):
         for var in item_selected:
             var.vtype = GRB.BINARY
         m.optimize()
-        solution = m.getAttr('X', item_selected)
+        solution = m.getAttr(b'X', item_selected)
         target_solution = [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1]
         for i, j in zip(solution, target_solution):
             self.assertAlmostEqual(i, j)
@@ -278,6 +279,7 @@ class GurobiMHTest(unittest.TestCase):
             m.setParam('OutputFlag', 0)
             x = [m.addVar() for i in range(10)]
             m.update()
+            thevars = m.getVars()
             objective = grb.quicksum(x)
             for i in [1, 2, 3, 4, 5]:
                 lb = i

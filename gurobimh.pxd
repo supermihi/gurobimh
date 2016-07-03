@@ -69,7 +69,7 @@ cdef class Model:
     #
     # attribute handling
     cdef getElementAttr(self, char* key, int element)
-    cdef char* getStrAttr(self, char *attrname)
+    cdef unicode getStrAttr(self, char *attrname)
     cdef int getIntAttr(self, char *attr) except ERRORCODE
     cdef double getDblAttr(self, char *attr) except ERRORCODE
     cdef double getElementDblAttr(self, char *attr, int element) except ERRORCODE
