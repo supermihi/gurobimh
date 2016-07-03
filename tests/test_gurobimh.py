@@ -360,6 +360,19 @@ class GurobiMHTest(unittest.TestCase):
                 m.optimize()
                 self.assertAlmostEqual(var.X, float(i)/float(j))
 
+    def test_linexpr_neg_with_constant(self):
+        for n in range(10):
+            m = grb.Model()
+            m.setParam('OutputFlag', 0)
+            x = m.addVar()
+            y = m.addVar()
+            m.update()
+            expr = -n - x
+            m.addConstr(y >= -expr)
+            m.setObjective(x + y)
+            m.optimize()
+            self.assertAlmostEqual(m.ObjVal, n)
+
     def test_remove_var(self):
         m = grb.Model()
         v0 = m.addVar(obj=1)
@@ -394,7 +407,6 @@ class GurobiMHTest(unittest.TestCase):
         self.assertAlmostEqual(v0.X, 20.0)
         self.assertAlmostEqual(v1.X, 0)
         self.assertAlmostEqual(c1.Pi, 1)
-        
 
     def test_remove_performance(self):
         m = grb.Model()
@@ -405,8 +417,41 @@ class GurobiMHTest(unittest.TestCase):
         for dvar in dvars[:num_vars_deleted]:
             m.remove(dvar)
         m.update()
-        self.assertEqual(m.numVars, num_vars - num_vars_deleted)
-            
+        m.addVar()
+        m.update()
+        self.assertEqual(m.numVars, num_vars - num_vars_deleted + 1)
+
+    def test_sos(self):
+        m = grb.Model()
+        x = m.addVar()
+        y = m.addVar()
+        m.update()
+
+        constr1 = m.addConstr(2*x + y <= 9)
+        sos1 = m.addSOS(GRB.SOS_TYPE1, [x, y])
+        constr2 = m.addConstr(x + y <= 6)
+        sos2 = m.addSOS(GRB.SOS_TYPE1, [x, y])
+
+        m.setObjective(6*x + 4*y, sense=GRB.MAXIMIZE)
+        m.optimize()
+
+        self.assertAlmostEqual(m.ObjVal, 27)
+        self.assertAlmostEqual(x.X, 4.5)
+        self.assertAlmostEqual(y.X, 0)
+
+        m.remove(sos1)
+        m.optimize()
+
+        self.assertAlmostEqual(m.ObjVal, 27)
+        self.assertAlmostEqual(x.X, 4.5)
+        self.assertAlmostEqual(y.X, 0)
+
+        m.remove(sos2)
+        m.optimize()
+
+        self.assertAlmostEqual(m.ObjVal, 30)
+        self.assertAlmostEqual(x.X, 3)
+        self.assertAlmostEqual(y.X, 3)
 
 
 if __name__ == '__main__':
