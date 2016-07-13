@@ -1,4 +1,4 @@
-#from __future__ import unicode_literals
+from __future__ import unicode_literals
 import os
 import unittest
 import gurobimh as grb
@@ -9,6 +9,7 @@ GRB = grb.GRB
 def get_knapsack_model(capacity, weights, values):
     items = range(len(weights))
     m = grb.Model()
+    m.setParam('OutputFlag', 0)
     m.ModelSense = GRB.MAXIMIZE
     m.ModelName = "knapsack"
     item_selected = [m.addVar(ub=1, obj=values[item], name="item_selected." + str(item))
@@ -23,6 +24,7 @@ def get_knapsack_model(capacity, weights, values):
 def get_knapsack_model_column(capacity, weights, values):
     items = range(len(weights))
     m = grb.Model()
+    m.setParam('OutputFlag', 0)
     m.ModelSense = GRB.MAXIMIZE
     m.ModelName = "knapsack_column"
     constr = m.addConstr(0, 'L', capacity, name='knapsack')
@@ -37,6 +39,7 @@ def get_knapsack_model_column(capacity, weights, values):
 class GurobiMHTest(unittest.TestCase):
     def test_simple_mip(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         x = m.addVar(vtype=GRB.BINARY, name=b'x')
         y = m.addVar(vtype=GRB.BINARY, name=u'y')
         z = m.addVar(vtype=GRB.BINARY, name='z')
@@ -66,6 +69,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_diet(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         x1 = m.addVar(lb=0, ub=GRB.INFINITY, obj=20, vtype=GRB.CONTINUOUS, name='x.1')
         x2 = m.addVar(obj=10, name='x.2')
         x3 = m.addVar(obj=31, name='x.3')
@@ -86,6 +90,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_diet_dual(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         m.ModelSense = GRB.MAXIMIZE
         pi_i = m.addVar(obj=21)
         pi_c = m.addVar(obj=12)
@@ -106,6 +111,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_diet_read(self):
         m = grb.read(os.path.join('tests', 'diet.lp'))
+        m.setParam('OutputFlag', 0)
         m.optimize()
         self.assertAlmostEqual(m.ObjVal, self.diet_cost)
         x = [m.getVarByName('x.' + str(i)) for i in range(1, 6)]
@@ -148,6 +154,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_unary_minus(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         x = [m.addVar() for i in range(10)]
         m.update()
         expr1 = grb.quicksum(i*var for i, var in enumerate(x))
@@ -159,6 +166,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_reset(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         x = [m.addVar(lb=i, name='x'+str(i)) for i in range(10)]
         m.reset()
         y = [m.addVar(ub=1000*i, name='y'+str(i)) for i in range(5)]
@@ -187,6 +195,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_attribute_error(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         m._blah = 5
         self.assertEqual(m._blah, 5)
         with self.assertRaises(AttributeError): m.blah = 5
@@ -213,6 +222,7 @@ class GurobiMHTest(unittest.TestCase):
     def test_add_empty_expression(self):
         num_vars = 100
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         x = [m.addVar() for i in range(num_vars)]
         m.update()
         expr = grb.quicksum(x)
@@ -229,6 +239,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_pwl_obj(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         v1 = m.addVar()
         v2 = m.addVar()
         m.update()
@@ -261,6 +272,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_linexpr_get_value(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         for n in [10, 100, 1000]:
             x = [m.addVar(lb=i) for i in range(n)]
             m.update()
@@ -305,6 +317,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_get_set_attr(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         var = m.addVar()
         constr = m.addConstr(0, 'L', 0)
         m.update()
@@ -322,6 +335,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_column(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         constrs = [m.addConstr(0, 'L', 0) for i in range(10)]
         m.update()
         col = grb.Column([1, 5, 9], [constrs[0], constrs[2], constrs[4]])
@@ -377,6 +391,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_remove_var(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         v0 = m.addVar(obj=1)
         v1 = m.addVar(obj=2)
         m.update()
@@ -392,6 +407,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_remove_constr(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         v0 = m.addVar(obj=1)
         v1 = m.addVar(obj=2)
         m.update()
@@ -412,6 +428,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_remove_performance(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         num_vars = 100000
         num_vars_deleted = num_vars // 2
         dvars = [m.addVar(name="x.%i" % i) for i in range(num_vars)]
@@ -425,6 +442,7 @@ class GurobiMHTest(unittest.TestCase):
 
     def test_sos(self):
         m = grb.Model()
+        m.setParam('OutputFlag', 0)
         x = m.addVar()
         y = m.addVar()
         m.update()
