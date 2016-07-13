@@ -130,9 +130,9 @@ cdef class CallbackClass:
 # model attrs
 #TODO: insert missing attributes and parameters
 cdef list IntAttrs = ['NumConstrs', 'NumVars', 'NumSOS', 'ModelSense', 'IsMIP', 'NumNZs', 'NumIntVars', 'NumBinVars',
-                      'NumPWLObjVars', 'SolCount', 'IterCount', 'BarIterCount', 'NodeCount']
+                      'NumPWLObjVars', 'SolCount', 'BarIterCount', 'NodeCount']
 cdef list StrAttrs = ['ModelName']
-cdef list DblAttrs = ['ObjCon', 'Runtime']
+cdef list DblAttrs = ['ObjCon', 'Runtime', 'IterCount']
 cdef list CharAttrs = []
 # var attrs
 StrAttrs += ['VarName']
@@ -243,9 +243,9 @@ cdef class GRBcls:
         self.status.SUBOPTIMAL = self.SUBOPTIMAL = GRB_SUBOPTIMAL
         self.status.INPROGRESS = self.INPROGRESS = GRB_INPROGRESS
 
-        self.LESS_EQUAL = '<'
-        self.EQUAL = '='
-        self.GREATER_EQUAL = '>'
+        self.LESS_EQUAL = b'<'
+        self.EQUAL = b'='
+        self.GREATER_EQUAL = b'>'
 
         self.callback = self.Callback = CallbackClass()
         self.Param = self.param = ParamConstClass
@@ -420,6 +420,7 @@ cdef class Model:
 
 
     def __setattr__(self, key, value):
+        cdef bytes lAttr
         if key[0] == '_':
             self.attrs[key] = value
         else:
@@ -454,7 +455,7 @@ cdef class Model:
         cdef int value
         self.error = GRBgetintattr(self.model, attr, &value)
         if self.error:
-            raise GurobiError('Error retrieving int attribute: {}'.format(self.error))
+            raise GurobiError('Error retrieving int attribute "{}": {}'.format(attr, self.error))
         return value
 
     cdef double getDblAttr(self, char *attr) except ERRORCODE:
@@ -493,17 +494,17 @@ cdef class Model:
         if lAttr in DblAttrsLower:
             self.error = GRBgetdblattrelement(self.model, lAttr, element, &dblValue)
             if self.error:
-                raise GurobiError('Error retrieving dbl attr: {}'.format(self.error))
+                raise GurobiError('Error retrieving dbl attr "{}": {}'.format(lAttr, self.error))
             return dblValue
         elif lAttr in IntAttrsLower:
             self.error = GRBgetintattrelement(self.model, lAttr, element, &intValue)
             if self.error:
-                raise GurobiError('Error retrieving int attr: {}'.format(self.error))
+                raise GurobiError('Error retrieving int attr "{}": {}'.format(lAttr, self.error))
             return intValue
         elif lAttr in StrAttrsLower:
             self.error = GRBgetstrattrelement(self.model, lAttr, element, &strValue)
             if self.error:
-                raise GurobiError('Error retrieving str attr: {}'.format(self.error))
+                raise GurobiError('Error retrieving str attr "{}": {}'.format(lAttr, self.error))
             return strValue.decode('UTF8')
         else:
             raise AttributeError(attr)
@@ -654,7 +655,7 @@ cdef class Model:
         self.needUpdate = True
         return sos
 
-    cpdef addConstr(self, lhs, basestring sense=None, rhs=None, name=''):
+    cpdef addConstr(self, lhs, sense=None, rhs=None, name=''):
         cdef LinExpr expr
         cdef int lenDct
         cdef Constr constr
@@ -667,7 +668,7 @@ cdef class Model:
         else:
             expr = LinExpr(lhs)
             LinExpr.subtractInplace(expr, rhs)
-            my_sense = ord(sense[0])
+            my_sense = ord(sense)
         numnz = self.compressLinExpr(expr)
         self.error = GRBaddconstr(self.model, numnz, self.varInds.data.as_ints,
                                   self.varCoeffs.data.as_doubles, my_sense,

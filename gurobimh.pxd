@@ -88,7 +88,7 @@ cdef class Model:
     cpdef addVar(self, double lb=?, double ub=?, double obj=?, char vtype=?, name=?, column=?)
     cpdef addSOS(self, int type, vars, weights=?)
     cpdef addRange(self, LinExpr expr, double lower, double upper, name=?)
-    cpdef addConstr(self, lhs, basestring sense=?, rhs=?, name=?)
+    cpdef addConstr(self, lhs, sense=?, rhs=?, name=?)
     cpdef setObjective(self, expression, sense=*)
     cpdef setPWLObj(self, Var var, x, y)
     cpdef LinExpr getObjective(self)
@@ -113,6 +113,8 @@ cdef extern from 'gurobi_c.h':
         pass
     ctypedef struct GRBmodel:
         pass
+
+    const int GRB_VERSION_MAJOR, GRB_VERSION_MINOR
     const char GRB_BINARY, GRB_CONTINUOUS, GRB_INTEGER, GRB_SEMICONT, GRB_SEMIINT
     const char GRB_EQUAL, GRB_LESS_EQUAL, GRB_GREATER_EQUAL
     # objective sense
