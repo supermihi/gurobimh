@@ -25,14 +25,6 @@ if '--profile' in sys.argv:
 extensions = cythonize(['gurobimh.pyx'], compiler_directives=directives)
 extensions[0].include_dirs = [join(GHOME, 'include')]
 extensions[0].library_dirs = [join(GHOME, 'lib')]
-# find library version: library name includes major/minor version information (e.g.
-# libgurobi65.so vs libgurobi60.so). This hack-ish solution parses version information from
-# the C header file.
-with open(join(GHOME, 'include', 'gurobi_c.h'), 'rt') as f:
-    gurobi_c_h = f.read()
-major = re.findall('define GRB_VERSION_MAJOR\s+([0-9]+)', gurobi_c_h)[0]
-minor = re.findall('define GRB_VERSION_MINOR\s+([0-9]+)', gurobi_c_h)[0]
-extensions[0].libraries = ['gurobi' + major + minor]
 
 # read current gurobimh version from gurobimh.pyx file
 with io.open('gurobimh.pyx', 'rt', encoding='UTF-8') as f:

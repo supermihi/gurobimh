@@ -61,6 +61,8 @@ class GurobiMHTest(unittest.TestCase):
         self.assertEqual(z.Varname, 'z')
         self.assertEqual(c0.ConstrName, c0_name)
         self.assertEqual(c1.ConstrName, c1_name)
+        count = m.IterCount
+        count = m.NodeCount
 
     diet_solution = [0, 0, 0, 1, 10]
     diet_rcs = [34/3.0, 20/3.0, 34/3.0, 0, 0]

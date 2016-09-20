@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# distutils: libraries = ["gurobi65"]
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: wraparound=False
@@ -18,7 +19,7 @@ from cpython cimport PY_MAJOR_VERSION
 # exception; saves us from having to return objects while still allowing error handling
 DEF ERRORCODE = -987654321
 
-__version__ = '2016.1'
+__version__ = '2016.2'
 
 if PY_MAJOR_VERSION >= 3:
     # workaround Py2/3 bytes/unicode issues

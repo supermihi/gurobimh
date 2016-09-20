@@ -37,6 +37,8 @@ The API is written in [Python](www.python.org). To compile it, you need [Cython]
 course, you need to have Gurobi installed, and the `GUROBI_HOME` environment variable needs to be
 set correctly.
 
+The current version supports Gurobi 6.5 only (due to some internal API changes in Gurobi, 6.0 is NOT supported anymore).
+
 Installation
 ------------
 Install directly from the [Python Package Index](www.pypi.org) with
