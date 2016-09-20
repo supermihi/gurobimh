@@ -130,9 +130,9 @@ cdef class CallbackClass:
 # model attrs
 #TODO: insert missing attributes and parameters
 cdef list IntAttrs = ['NumConstrs', 'NumVars', 'NumSOS', 'ModelSense', 'IsMIP', 'NumNZs', 'NumIntVars', 'NumBinVars',
-                      'NumPWLObjVars', 'SolCount', 'BarIterCount', 'NodeCount']
+                      'NumPWLObjVars', 'SolCount', 'BarIterCount']
 cdef list StrAttrs = ['ModelName']
-cdef list DblAttrs = ['ObjCon', 'Runtime', 'IterCount']
+cdef list DblAttrs = ['ObjCon', 'Runtime', 'IterCount', 'NodeCount']
 cdef list CharAttrs = []
 # var attrs
 StrAttrs += ['VarName']
