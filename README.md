@@ -1,6 +1,9 @@
 gurobimh: Unofficial Alternative Gurobi/Python Interface
 ========================================================
 
+# *Maintainer Wanted!*
+As I do not currently use the Gurobi / Python interface, this package is orphaned. Anyone willing to further maintain it, please contact me!
+
 Overview
 --------
 `gurobimh` is a drop-in replacement for the `gurobipy` API bindings shipped with
