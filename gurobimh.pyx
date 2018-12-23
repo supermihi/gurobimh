@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# distutils: libraries = ["gurobi65"]
+# distutils: libraries = ["gurobi81"]
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: wraparound=False
